@@ -37,6 +37,20 @@ def run_all(beta, num_traj =100, len_traj=100, type = "diversionary", v_reach =8
             
         return rewards
     
+    def find_the_joint_state(n_states, N_agents, agent, state):
+        
+        shape = (n_states,)*N_agents
+        joint_states = np.zeros(shape)
+        
+        slices = [slice(None)] * N_agents
+        slices[agent] = state  # Set the i-th dimension index to 0
+        joint_states[tuple(slices)] = 1  # Fill the corresponding entries with 1
+        
+        joint_states = joint_states.flatten()
+        joint_states_idx = np.where(joint_states==1)[0]
+        
+        return joint_states_idx
+    
     def determine_goal_decoy_states(n_states, N_agents, target_agents = [0], decoy_agents = [1]):
         """
         Determine goal states and decoy states
@@ -45,51 +59,38 @@ def run_all(beta, num_traj =100, len_traj=100, type = "diversionary", v_reach =8
         
         return: 1d array of goal states, 1d array of decoy states
         """
+        local_goal_state = 0
+        goal_states = []
+        decoy_states = []
         
-        if N_agents == 2:
-            goal_states = np.array([0,1,2,3])
-            decoy_states = np.array([0,4,8,12])
-        elif N_agents == 3:
-            goal_states = range(0,n_states**(N_agents-1))
-            decoy_states = []
-            for i in range(n_states):
-                decoy_states.append(np.arange(n_states**(N_agents-1)*i, n_states**(N_agents-1)*i + n_states))
-            decoy_states = np.array(decoy_states).reshape(-1,)  
-        elif N_agents == 1:
-            goal_states = np.array([0])
-            decoy_states = np.array([])   
+        for i in target_agents:
+            goal_states.extend(find_the_joint_state(n_states, N_agents, i, local_goal_state))
+        for i in decoy_agents:
+            decoy_states.extend(find_the_joint_state(n_states, N_agents, i, local_goal_state))
         
-        return goal_states, decoy_states
+        return np.array(goal_states), np.array(decoy_states)
     
-    def build_target_occupancy_measure(mmdp, n_states, n_local_actions, N_agents, target_agents = [1]):
+    def build_target_occupancy_measure(n_states, n_local_actions, N_agents, target_agents = [1]):
         """
         Set target occupancy measure
         
         return: Target occupancy measure as array with shape (mmdp.n_joint_states,mmdp.n_joint_actions)
         """
         
-        target_occupancy_measure = np.zeros((mmdp.n_joint_states,mmdp.n_joint_actions))
-        if N_agents ==2:
-            for i, j, k, a in product(range(n_states), range(n_states), range(n_local_actions), range(n_local_actions)):
-                if j == 0:
-                    target_occupancy_measure[i*n_states +j, k*n_local_actions + a] = 3
-                elif j == 1:
-                    target_occupancy_measure[i*n_states +j, k*n_local_actions + a] = 1
-                elif j == 2:
-                    target_occupancy_measure[i*n_states +j, k*n_local_actions + a] = -1
-                elif j == 3:
-                    target_occupancy_measure[i*n_states +j, k*n_local_actions + a] = -3
-        elif N_agents ==3:
-            for i, j, k, a, b, c in product(range(n_states), range(n_states), range(n_states), range(n_local_actions), range(n_local_actions), range(n_local_actions)):
-                if j == 0:
-                    target_occupancy_measure[i*(n_states**2) +j*n_states +k, a*(n_local_actions**2) + b*n_local_actions +c] = 2
-                elif j == 1:
-                    target_occupancy_measure[i*(n_states**2) +j*n_states +k, a*(n_local_actions**2) + b*n_local_actions +c] = 1
-                elif j == 2:
-                    target_occupancy_measure[i*(n_states**2) +j*n_states +k, a*(n_local_actions**2) + b*n_local_actions +c] = -1
-                elif j == 3:
-                    target_occupancy_measure[i*(n_states**2) +j*n_states +k, a*(n_local_actions**2) + b*n_local_actions +c] = -3
+        values = [3,1,-1,-3]
+        target_occupancy_measure = np.zeros((n_states**N_agents, n_local_actions**N_agents), dtype=int)
         
+        for i in target_agents:
+            state0 = find_the_joint_state(n_states, N_agents, i, 0)
+            state1 = find_the_joint_state(n_states, N_agents, i, 1)
+            state2 = find_the_joint_state(n_states, N_agents, i, 2)
+            state3 = find_the_joint_state(n_states, N_agents, i, 3)
+            
+            target_occupancy_measure[state0,:] += values[0]
+            target_occupancy_measure[state1,:] += values[1]
+            target_occupancy_measure[state2,:] += values[2]
+            target_occupancy_measure[state3,:] += values[3]
+            
         return target_occupancy_measure
 
         
@@ -113,14 +114,14 @@ def run_all(beta, num_traj =100, len_traj=100, type = "diversionary", v_reach =8
     # Deterministic goal states
     goal_states, decoy_states = determine_goal_decoy_states(n_states, N_agents, target_agents)
     
+    # Target occupancy measure
+    target_occupancy_measure = build_target_occupancy_measure(n_states, n_local_actions, N_agents)
+    
     mmdp = MultiAgentGridworld(N_agents, initial_distribution, n_states, n_local_actions, rewards, gamma, v_reach = v_reach)
     mmdp.set_goal_states(goal_states, decoy_states)
     
     policy_opt = PolicyOptimizationCVX(mmdp)
     irl = IRL(mmdp, epochs =7, learning_rate = 0.9)
-    
-    # Target occupancy measure
-    target_occupancy_measure = build_target_occupancy_measure(mmdp, n_states, n_local_actions, N_agents)
     
     ## 1. Solve LP
     occupancy_measures, policy, value_function, revenue = policy_opt.solve_lp_cvxopt()
