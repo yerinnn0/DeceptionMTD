@@ -11,7 +11,7 @@
   
       3. Solve the MDP with deception
   
-      4. Solve IRL (Generates trajectory \rightarrow Estimates rewards)
+      4. Solve IRL (Generates trajectory -> Estimates rewards)
   
       5. Save the results
 
