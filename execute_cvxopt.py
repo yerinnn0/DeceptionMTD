@@ -9,7 +9,7 @@ import multiprocessing as mp
 import pickle
 import os
 
-def run_all(beta, num_traj =100, len_traj=100, type = "diversionary", v_reach =8):
+def run_all(N_agents, beta, target_agents=[0], decoy_agents = [1], num_traj =100, len_traj=100, type = "diversionary", v_reach =8):
     
     def calculate_error(true_value_func, estimated_value_func, scale = None):
         """
@@ -70,7 +70,7 @@ def run_all(beta, num_traj =100, len_traj=100, type = "diversionary", v_reach =8
         
         return np.array(goal_states), np.array(decoy_states)
     
-    def build_target_occupancy_measure(n_states, n_local_actions, N_agents, target_agents = [1]):
+    def build_target_occupancy_measure(n_states, n_local_actions, N_agents, decoy_agents = [1]):
         """
         Set target occupancy measure
         
@@ -80,7 +80,7 @@ def run_all(beta, num_traj =100, len_traj=100, type = "diversionary", v_reach =8
         values = [3,1,-1,-3]
         target_occupancy_measure = np.zeros((n_states**N_agents, n_local_actions**N_agents), dtype=int)
         
-        for i in target_agents:
+        for i in decoy_agents:
             state0 = find_the_joint_state(n_states, N_agents, i, 0)
             state1 = find_the_joint_state(n_states, N_agents, i, 1)
             state2 = find_the_joint_state(n_states, N_agents, i, 2)
@@ -96,11 +96,8 @@ def run_all(beta, num_traj =100, len_traj=100, type = "diversionary", v_reach =8
         
     # MMDP Settings
     n_states = 4
-    N_agents = 3
     n_local_actions = 3
     gamma = 0.9
-    
-    target_agents = [0]
 
     # Deterministic Initial States
     initial_state = 0
@@ -112,10 +109,10 @@ def run_all(beta, num_traj =100, len_traj=100, type = "diversionary", v_reach =8
     rewards = build_multi_agent_rewards(n_states, n_local_actions, N_agents, target_agents)
        
     # Deterministic goal states
-    goal_states, decoy_states = determine_goal_decoy_states(n_states, N_agents, target_agents)
+    goal_states, decoy_states = determine_goal_decoy_states(n_states, N_agents, target_agents, decoy_agents)
     
     # Target occupancy measure
-    target_occupancy_measure = build_target_occupancy_measure(n_states, n_local_actions, N_agents)
+    target_occupancy_measure = build_target_occupancy_measure(n_states, n_local_actions, N_agents, decoy_agents)
     
     mmdp = MultiAgentGridworld(N_agents, initial_distribution, n_states, n_local_actions, rewards, gamma, v_reach = v_reach)
     mmdp.set_goal_states(goal_states, decoy_states)
@@ -123,7 +120,7 @@ def run_all(beta, num_traj =100, len_traj=100, type = "diversionary", v_reach =8
     policy_opt = PolicyOptimizationCVX(mmdp)
     irl = IRL(mmdp, epochs =7, learning_rate = 0.9)
     
-    ## 1. Solve LP
+    # 1. Solve LP
     occupancy_measures, policy, value_function, revenue = policy_opt.solve_lp_cvxopt()
 
     ## 2. Solve QP
@@ -141,6 +138,7 @@ def run_all(beta, num_traj =100, len_traj=100, type = "diversionary", v_reach =8
         
     assert(deceptive_occupancy_measures >= 0).all()
     assert(deceptive_policy >= 0).all()
+
 
     ## 3. Solve IRL
     print("Solving IRL...")
@@ -185,19 +183,24 @@ def run_all(beta, num_traj =100, len_traj=100, type = "diversionary", v_reach =8
             'target_occupancy_measure': target_occupancy_measure,
         },
         'policy_difference': np.array(policy_difference),
-        'observed_trajectory': trajectories
+        'observed_trajectory': trajectories,
+        'transition_matrix': mmdp.transition_matrices
     }
 
     return result
 
-beta_vec = np.arange(0,20,2)
+beta_vec = np.arange(0,0.3,0.03)
 
 if __name__ == '__main__':
     with mp.Pool() as pool:
         
-        diversionary_results = pool.starmap(run_all, [(beta_vec[i],100,100, "diversionary",7) for i in range(len(beta_vec))])
-        targeted_results = pool.starmap(run_all, [(beta_vec[i],100,100, "targeted",7) for i in range(len(beta_vec))])
-        equivocal_results = pool.starmap(run_all, [(beta_vec[i],100,100, "equivocal",7) for i in range(len(beta_vec))])
+        N_agents = 3
+        target_agents = [0]
+        decoy_agents = [1,2]
+        
+        diversionary_results = pool.starmap(run_all, [(N_agents, beta_vec[i],target_agents, decoy_agents, 100,100, "diversionary",7) for i in range(len(beta_vec))])
+        targeted_results = pool.starmap(run_all, [(N_agents, beta_vec[i],target_agents, decoy_agents, 00,100, "targeted",7) for i in range(len(beta_vec))])
+        equivocal_results = pool.starmap(run_all, [(N_agents, beta_vec[i],target_agents, decoy_agents, 100,100, "equivocal",7) for i in range(len(beta_vec))])
         
         experiment_logger = {
             'beta_vec': beta_vec,

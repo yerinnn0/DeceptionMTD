@@ -209,36 +209,26 @@ class PolicyOptimizationCVX:
         transitions = self.mmdp.transition_matrices
         r = self.mmdp.joint_rewards
 
-        print("Solving Diversionary Deception...")
-        time0 = time.time()
+        def objective_QP(X_flat):
+            X = X_flat.reshape((n_states, n_actions))
+            return -np.sum(beta * X**2 + (r - 2 * beta * occupancy_measures) * X)
         
-        P = - (2 * beta) * np.eye(n_states * n_actions)
-        q = (2 * beta) * occupancy_measures.flatten() - r.flatten()
+        initial_guess = np.ones(n_states*n_actions)
+        
+        constraints = [{'type': 'eq', 'fun': self.flow_constraint}, {'type': 'ineq', 'fun': self.reachability_constraint}]
 
-        # Objective function
-        P = matrix(P)
-        q = matrix(q)
-        # Inequality constraint: Gx <= h
-        G = matrix(np.vstack([self.A_p, self.A_r]))
-        h =  matrix(np.vstack([self.b_p, self.b_r]))
-        # Equality constraint: Ax = b
-        A =  matrix(np.vstack([self.A_fl]))
-        b =  matrix(np.hstack([self.b_fl]))
+        print("Solving QP...")
+        
+        time0 = time.time()
+        result = minimize(objective_QP, initial_guess, constraints=constraints, bounds=[(0, None) for _ in range(n_states * n_actions)], options={'disp': False})
 
-        # Solve QP problem
-        initial_value = self.mmdp.initial_distribution
-        initial_value = occupancy_measures
-        sol_dict = solvers.qp(P, q, G, h, A, b, initvals = initial_value)
-
-        sol = np.array(sol_dict['x']).flatten()
         print("Time :", time.time()-time0, "Time per state :", (time.time()-time0)/n_states)
 
-        # sol = result.x
+        sol = result.x
         # feasibility check
-        if (self.flow_constraint(sol) >= 1e-6).any():
+        if (self.flow_constraint(sol) >= 1e-6).all():
             print("***********SOLUTION NOT FEASIBLE*************")
         deceptive_occupancy_measures = sol.reshape((n_states, n_actions))
-        deceptive_occupancy_measures = np.where((deceptive_occupancy_measures < 0) & (deceptive_occupancy_measures > self.threshold), 0, deceptive_occupancy_measures)
         denominator = np.repeat(np.sum(deceptive_occupancy_measures, axis = -1).reshape(n_states,1), n_actions, axis = -1)
         denominator = np.where(denominator >= 1e-9, denominator, 1e-9)
         deceptive_policy = deceptive_occupancy_measures / denominator
@@ -246,7 +236,56 @@ class PolicyOptimizationCVX:
         deceptive_revenue = np.sum(r * deceptive_occupancy_measures)
 
         return deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue
+    
+        # """
+        # Solve MMDP with diversionary deception (Optimization Problem 4)
+        # """
+        # n_states = self.mmdp.n_joint_states
+        # n_actions = self.mmdp.n_joint_actions
+        # beta = beta
+        # gamma = self.mmdp.gamma
+        # transitions = self.mmdp.transition_matrices
+        # r = self.mmdp.joint_rewards
 
+        # print("Solving Diversionary Deception...")
+        # time0 = time.time()
+        
+        # P = - (2 * beta) * np.eye(n_states * n_actions)
+        # q = (2 * beta) * occupancy_measures.flatten() - r.flatten()
+
+        # # Objective function
+        # P = matrix(P)
+        # q = matrix(q)
+        # # Inequality constraint: Gx <= h
+        # G = matrix(np.vstack([self.A_p, self.A_r]))
+        # h =  matrix(np.vstack([self.b_p, self.b_r]))
+        # # Equality constraint: Ax = b
+        # A =  matrix(np.vstack([self.A_fl]))
+        # b =  matrix(np.hstack([self.b_fl]))
+
+        # # Solve QP problem
+        # initial_value = self.mmdp.initial_distribution
+        # initial_value = occupancy_measures
+        # sol_dict = solvers.qp(P, q, G, h, A, b, initvals = initial_value)
+
+        # sol = np.array(sol_dict['x']).flatten()
+        # print("Time :", time.time()-time0, "Time per state :", (time.time()-time0)/n_states)
+
+        # # sol = result.x
+        # # feasibility check
+        # if (self.flow_constraint(sol) >= 1e-6).any():
+        #     print("***********SOLUTION NOT FEASIBLE*************")
+        # deceptive_occupancy_measures = sol.reshape((n_states, n_actions))
+        # deceptive_occupancy_measures = np.where((deceptive_occupancy_measures < 0) & (deceptive_occupancy_measures > self.threshold), 0, deceptive_occupancy_measures)
+        # denominator = np.repeat(np.sum(deceptive_occupancy_measures, axis = -1).reshape(n_states,1), n_actions, axis = -1)
+        # denominator = np.where(denominator >= 1e-9, denominator, 1e-9)
+        # deceptive_policy = deceptive_occupancy_measures / denominator
+        # deceptive_value_function = policy_evaluation(transitions, r, deceptive_policy, 1e-6, gamma)
+        # deceptive_revenue = np.sum(r * deceptive_occupancy_measures)
+
+        # return deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue
+
+        
     
     def targeted_deception(self, target_occupancy_measures, beta = 0):
         """
