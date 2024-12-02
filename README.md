@@ -4,6 +4,16 @@
 - `policy_optimization_cvxopt.py` includes settings and functions for solving MMDP as optimization problem.
 - `irl_maxent_rsa.py` includes settings and functions for generating trajectory and solving IRL.
 - `execute_cvxopt.py` includes codes for parameter setting and execution.
+  
+      1. Set up the problem
+  
+      2. Solve the original MDP
+  
+      3. Solve the MDP with deception
+  
+      4. Solve IRL (Generates trajectory \rightarrow Estimates rewards)
+  
+      5. Save the results
 
 ## Execution
 
