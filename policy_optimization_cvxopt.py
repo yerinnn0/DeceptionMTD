@@ -3,8 +3,14 @@ Solve optimization problem for deceptive policy
 """
 import numpy as np
 from scipy.optimize import minimize
+import scipy.sparse as sp
 import time
-from cvxopt import matrix, solvers
+from cvxopt import matrix, spmatrix, solvers
+
+def scipy_to_cvxopt_sparse(sparse_mat):
+    coo = sparse_mat.tocoo()
+    return spmatrix(coo.data, coo.row.tolist(), coo.col.tolist(), size=sparse_mat.shape)
+
 
 def policy_evaluation(transitions, rewards, policy, eta, gamma):
     """
@@ -39,7 +45,6 @@ def policy_evaluation(transitions, rewards, policy, eta, gamma):
     
     return value_function
 
-
 class PolicyOptimizationCVX:
 
     def __init__(self, mmdp):
@@ -56,32 +61,61 @@ class PolicyOptimizationCVX:
         solvers.options['show_progress'] = False
         
         # Flow constraint
-        self.A_fl = np.zeros((n_states, n_states * n_actions))
-        self.b_fl = self.mmdp.initial_distribution
+        # self.A_fl = np.zeros((n_states, n_states * n_actions))
+        # self.b_fl = self.mmdp.initial_distribution
+        # for s in range(n_states):
+        #     self.A_fl[s, s * n_actions:(s + 1) * n_actions] = 1
+        #     for a in range(n_actions):
+        #         for s2 in range(n_states):
+        #             self.A_fl[s2, s * n_actions + a] -= gamma * transitions[s, a, s2]
+            
+        # # Reachability constraint (Task constraint)        
+        # self.A_r = -np.sum(transitions[:,:,self.mmdp.goal_states], axis = -1).reshape(1,-1)
+        # self.b_r = -self.mmdp.v_reach
+        
+        # # Non-negativity constraint
+        # self.A_p = -200 * np.eye(n_states * n_actions)
+        # self.b_p = np.zeros((n_states * n_actions,1))
+        
+        # # Equivocal constraint
+        # self.A_eq = np.zeros((n_states, n_actions))
+        # for s in range(n_states):
+        #     for a in range(n_actions):
+        #         if s in self.mmdp.goal_states:
+        #             self.A_eq[s,:] += 1
+        #         if s in self.mmdp.decoy_states:
+        #             self.A_eq[s,:] -= 1
+        # self.A_eq = 100*self.A_eq.reshape(1,-1)
+        # self.b_eq = 0
+        
+        ##########################################################
+        
+        self.A_fl = sp.lil_matrix((n_states, n_states * n_actions))
         for s in range(n_states):
             self.A_fl[s, s * n_actions:(s + 1) * n_actions] = 1
             for a in range(n_actions):
                 for s2 in range(n_states):
                     self.A_fl[s2, s * n_actions + a] -= gamma * transitions[s, a, s2]
-            
-        # Reachability constraint (Task constraint)        
-        self.A_r = -np.sum(transitions[:,:,self.mmdp.goal_states], axis = -1).reshape(1,-1)
-        self.b_r = -self.mmdp.v_reach
+        self.A_fl = sp.csr_matrix(self.A_fl)
         
-        # Non-negativity constraint
-        self.A_p = -200 * np.eye(n_states * n_actions)
-        self.b_p = np.zeros((n_states * n_actions,1))
+        self.A_r = sp.csr_matrix(-np.sum(transitions[:, :, self.mmdp.goal_states], axis=-1).reshape(1, -1))
         
-        # Equivocal constraint
-        self.A_eq = np.zeros((n_states, n_actions))
+        self.A_p = -200 * sp.eye(n_states * n_actions, format='csr')
+        
+        self.A_eq = sp.lil_matrix((n_states, n_actions),dtype = float)
         for s in range(n_states):
-            for a in range(n_actions):
-                if s in self.mmdp.goal_states:
-                    self.A_eq[s,:] += 1
-                if s in self.mmdp.decoy_states:
-                    self.A_eq[s,:] -= 1
-        self.A_eq = 100*self.A_eq.reshape(1,-1)
-        self.b_eq = 0
+            if s in self.mmdp.goal_states:
+                self. A_eq[s, :] = self.A_eq[s, :].toarray().flatten() + 1 
+            if s in self.mmdp.decoy_states:
+                self. A_eq[s, :] = self.A_eq[s, :].toarray().flatten() - 1 
+        self.A_eq = 100 * self.A_eq.reshape(1, -1).tocsr()
+        
+        self.b_fl = np.array(self.mmdp.initial_distribution, dtype=np.float64).reshape(-1, 1)
+        self.b_r = np.array([-self.mmdp.v_reach], dtype=np.float64).reshape(-1, 1)
+        self.b_p = np.zeros((n_states * n_actions, 1), dtype=np.float64)
+        self.b_eq = np.array([0], dtype=np.float64).reshape(-1, 1)
+                
+        ##########################################################
 
     def flow_constraint(self,X_flat):
         
@@ -166,23 +200,24 @@ class PolicyOptimizationCVX:
         
         c = -r.flatten()
         # Inequality constraint: Gx <= h
-        G = np.vstack([self.A_p, self.A_r])
-        h = np.vstack([self.b_p, self.b_r])
+        G = sp.vstack([self.A_p, self.A_r])
+        h = np.vstack([self.b_p, self.b_r]).flatten()
         # Equality constraint: Ax = b
-        A = np.vstack([self.A_fl])
-        b = np.hstack([self.b_fl])
+        A = self.A_fl
+        b = self.b_fl.flatten()
 
         # Convert the problem into cvxopt format
-        G_cvxopt = matrix(G)
-        h_cvxopt = matrix(h)
-        A_cvxopt = matrix(A)
-        b_cvxopt = matrix(b)
-        c_cvxopt = matrix(c)
+        G_cvxopt = scipy_to_cvxopt_sparse(G)
+        A_cvxopt = scipy_to_cvxopt_sparse(A)
+        h_cvxopt = matrix(h.astype(np.float64), tc='d')
+        b_cvxopt = matrix(b.astype(np.float64), tc='d')
+        c_cvxopt = matrix(c.astype(np.float64), tc='d')
         
         sol_dict = solvers.lp(c_cvxopt, G_cvxopt, h_cvxopt, A_cvxopt, b_cvxopt)
         
         sol = np.array(sol_dict['x']).flatten()
         print("Time :", time.time()-time0, "Time per state :", (time.time()-time0)/n_states)
+        
 
         sol = np.where(sol >= 1e-8, sol, 0)
         # feasibility check
@@ -303,18 +338,21 @@ class PolicyOptimizationCVX:
         
         time0 = time.time()
 
-        P = - (2 * beta) * np.eye(n_states * n_actions)
+        # P = - (2 * beta) * np.eye(n_states * n_actions)
+        n = n_states * n_actions  # Size of the matrix
+        diagonal_values = [-2 * beta] * n  # Diagonal entries (-2 * beta)
+        P = spmatrix(diagonal_values, range(n), range(n), size=(n, n))
         q = (2 * beta) * target_occupancy_measures.flatten() - r.flatten()
 
         # Objective function
-        P = matrix(P)
+        # P = matrix(P)
         q = matrix(q)
         # Inequality constraint: Gx <= h
-        G = matrix(np.vstack([self.A_p, self.A_r]))
-        h =  matrix(np.vstack([self.b_p, self.b_r]))
+        G = scipy_to_cvxopt_sparse(sp.vstack([self.A_p, self.A_r]))
+        h =  matrix(np.vstack([self.b_p, self.b_r]).flatten(), tc='d')
         # Equality constraint: Ax = b
-        A =  matrix(np.vstack([self.A_fl]))
-        b =  matrix(np.hstack([self.b_fl]))
+        A =  scipy_to_cvxopt_sparse(self.A_fl)
+        b =  matrix(self.b_fl.flatten(), tc='d')
 
         # Solve QP problem
         sol_dict = solvers.qp(P, q, G, h, A, b)
@@ -353,18 +391,18 @@ class PolicyOptimizationCVX:
         # Objective function
         c = -r.flatten()
         # Inequality constraint: Gx <= h
-        G = np.vstack([self.A_p, self.A_r])
+        G = scipy_to_cvxopt_sparse(sp.vstack([self.A_p, self.A_r]))
         h = np.vstack([self.b_p, self.b_r])
         # Equality constraint: Ax = b
-        A = np.vstack([self.A_fl, self.A_eq])
-        b = np.hstack([self.b_fl, self.b_eq])
+        A = scipy_to_cvxopt_sparse(sp.vstack([self.A_fl, self.A_eq]))
+        b = np.vstack([self.b_fl, self.b_eq])
 
         # Convert the problem into cvxopt format
         G_cvxopt = matrix(G)
-        h_cvxopt = matrix(h)
+        h_cvxopt = matrix(h.flatten(), tc='d')
         A_cvxopt = matrix(A)
-        b_cvxopt = matrix(b)
-        c_cvxopt = matrix(c)
+        b_cvxopt = matrix(b.flatten(), tc='d')
+        c_cvxopt = matrix(c.flatten(), tc='d')
         
         sol_dict = solvers.lp(c_cvxopt, G_cvxopt, h_cvxopt, A_cvxopt, b_cvxopt)
         

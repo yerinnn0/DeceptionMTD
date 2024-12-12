@@ -6,6 +6,7 @@ import time
 
 import numpy as np
 import numpy.random as rn
+import scipy.sparse as sp
 
 
 class IRL:
@@ -14,7 +15,7 @@ class IRL:
         self.mmdp = mmdp
         self.epochs = epochs
         self.learning_rate = learning_rate
-        self.feature_matrix = np.identity(mmdp.n_joint_states*mmdp.n_joint_actions) # (n_states * n_actions, n_states * n_actions)
+        self.feature_matrix = sp.eye(mmdp.n_joint_states*mmdp.n_joint_actions, mmdp.n_joint_states*mmdp.n_joint_actions, format = 'coo') # (n_states * n_actions, n_states * n_actions)
 
     def generate_trajectories(self, policy, num_traj, len_traj, reset_s0 = True):
         """
@@ -250,7 +251,16 @@ def find_feature_expectations(feature_matrix, trajectories, n_actions):
         for step in trajectory:
             state = step[0]
             action = step[1]
-            feature_expectations += feature_matrix[int(state * n_actions + action)]
+
+            row_index = int(state * n_actions + action)
+            # Extract the feature vector using the COO format
+            indices = feature_matrix.row == row_index
+            feature_vector = np.zeros(feature_matrix.shape[1])
+            feature_vector[feature_matrix.col[indices]] = feature_matrix.data[indices]
+            feature_expectations += feature_vector
+
+
+            # feature_expectations += feature_matrix[int(state * n_actions + action)]
 
     feature_expectations /= trajectories.shape[0]
 
