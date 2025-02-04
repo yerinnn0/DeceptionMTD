@@ -4,12 +4,13 @@ from itertools import product
 from MDP import create_rewards, create_decoy_rewards, MultiAgentGridworld
 from policy_optimization_cvxopt import PolicyOptimizationCVX
 from irl_maxent_rsa import IRL
+from config import *
 
 import multiprocessing as mp
 import pickle
 import os
 
-def run_all(N_agents, beta, target_agents=[0], decoy_agents = [1], num_traj =100, len_traj=100, type = "diversionary", v_reach =8):
+def run_all(beta):
     
     def calculate_error(true_value_func, estimated_value_func, scale = None):
         """
@@ -21,7 +22,7 @@ def run_all(N_agents, beta, target_agents=[0], decoy_agents = [1], num_traj =100
 
         return np.sum(np.abs(true_value_func - estimated_value_func))/scale
     
-    def build_multi_agent_rewards(n_states, n_local_actions, N_agents, target_agents = [0]):
+    def build_multi_agent_rewards(n_states, n_local_actions, N_agents, real_agents = [0]):
         """
         Create multi-agent rewards
         
@@ -30,7 +31,7 @@ def run_all(N_agents, beta, target_agents=[0], decoy_agents = [1], num_traj =100
         rewards = np.zeros([n_states, n_local_actions, N_agents])
         
         for agent_id in range(N_agents):
-            if agent_id in target_agents:
+            if agent_id in real_agents:
                 rewards[:, :, agent_id] = create_rewards()
             else:
                 rewards[:, :, agent_id] = create_decoy_rewards()
@@ -51,7 +52,7 @@ def run_all(N_agents, beta, target_agents=[0], decoy_agents = [1], num_traj =100
         
         return joint_states_idx
     
-    def determine_goal_decoy_states(n_states, N_agents, target_agents = [0], decoy_agents = [1]):
+    def determine_goal_decoy_states(n_local_states, N_agents, real_agents = [0], target_decoy_agents = [1]):
         """
         Determine goal states and decoy states
         Goal states: When target agents are in "N(normal)" state
@@ -59,78 +60,69 @@ def run_all(N_agents, beta, target_agents=[0], decoy_agents = [1], num_traj =100
         
         return: 1d array of goal states, 1d array of decoy states
         """
-        local_goal_state = 0
         goal_states = []
         decoy_states = []
         
-        for i in target_agents:
-            goal_states.extend(find_the_joint_state(n_states, N_agents, i, local_goal_state))
-        for i in decoy_agents:
-            decoy_states.extend(find_the_joint_state(n_states, N_agents, i, local_goal_state))
+        for i in real_agents:
+            goal_states.extend(find_the_joint_state(n_local_states, N_agents, i, local_goal_state))
+        for i in target_decoy_agents:
+            decoy_states.extend(find_the_joint_state(n_local_states, N_agents, i, local_goal_state))
         
         return np.array(goal_states), np.array(decoy_states)
     
-    def build_target_occupancy_measure(n_states, n_local_actions, N_agents, decoy_agents = [1]):
+    def build_target_occupancy_measure(n_local_states, n_local_actions, N_agents, target_decoy_agents = [1]):
         """
         Set target occupancy measure
         
         return: Target occupancy measure as array with shape (mmdp.n_joint_states,mmdp.n_joint_actions)
         """
+        target_occupancy_measure = np.zeros((n_local_states**N_agents, n_local_actions**N_agents), dtype=int)
         
-        values = [3,1,-1,-3]
-        target_occupancy_measure = np.zeros((n_states**N_agents, n_local_actions**N_agents), dtype=int)
-        
-        for i in decoy_agents:
-            state0 = find_the_joint_state(n_states, N_agents, i, 0)
-            state1 = find_the_joint_state(n_states, N_agents, i, 1)
-            state2 = find_the_joint_state(n_states, N_agents, i, 2)
-            state3 = find_the_joint_state(n_states, N_agents, i, 3)
+        for i in target_decoy_agents:
+            state0 = find_the_joint_state(n_local_states, N_agents, i, 0)
+            state1 = find_the_joint_state(n_local_states, N_agents, i, 1)
+            state2 = find_the_joint_state(n_local_states, N_agents, i, 2)
+            state3 = find_the_joint_state(n_local_states, N_agents, i, 3)
             
-            target_occupancy_measure[state0,:] += values[0]
-            target_occupancy_measure[state1,:] += values[1]
-            target_occupancy_measure[state2,:] += values[2]
-            target_occupancy_measure[state3,:] += values[3]
+            target_occupancy_measure[state0,:] += target_occupancy_measure_values[0]
+            target_occupancy_measure[state1,:] += target_occupancy_measure_values[1]
+            target_occupancy_measure[state2,:] += target_occupancy_measure_values[2]
+            target_occupancy_measure[state3,:] += target_occupancy_measure_values[3]
             
         return target_occupancy_measure
 
-        
-    # MMDP Settings
-    n_states = 4
-    n_local_actions = 3
-    gamma = 0.9
 
     # Deterministic Initial States
-    initial_state = 0
-    initial_distribution = np.zeros((n_states, N_agents))
-    initial_distribution[initial_state] = 1
+    initial_distribution = np.zeros((n_local_states, N_agents))
+    initial_distribution[local_initial_state] = 1
     initial_distribution = initial_distribution.T.reshape(-1,1)
     
     # Rewards
-    rewards = build_multi_agent_rewards(n_states, n_local_actions, N_agents, target_agents)
+    rewards = build_multi_agent_rewards(n_local_states, n_local_actions, N_agents, real_agents)
        
     # Deterministic goal states
-    goal_states, decoy_states = determine_goal_decoy_states(n_states, N_agents, target_agents, decoy_agents)
+    goal_states, decoy_states = determine_goal_decoy_states(n_local_states, N_agents, real_agents, target_decoy_agents)
     
     # Target occupancy measure
-    target_occupancy_measure = build_target_occupancy_measure(n_states, n_local_actions, N_agents, decoy_agents)
+    target_occupancy_measure = build_target_occupancy_measure(n_local_states, n_local_actions, N_agents, target_decoy_agents)
     
-    mmdp = MultiAgentGridworld(N_agents, initial_distribution, n_states, n_local_actions, rewards, gamma, v_reach = v_reach)
+    mmdp = MultiAgentGridworld(N_agents, initial_distribution, n_local_states, n_local_actions, rewards, gamma, v_reach)
     mmdp.set_goal_states(goal_states, decoy_states)
     
     policy_opt = PolicyOptimizationCVX(mmdp)
-    irl = IRL(mmdp, epochs =7, learning_rate = 0.9)
+    irl = IRL(mmdp, epochs = irl_epoch, learning_rate = irl_learning_rate)
     
     # 1. Solve LP
     occupancy_measures, policy, value_function, revenue = policy_opt.solve_lp_cvxopt()
 
     ## 2. Solve QP
-    if type == "diversionary":
+    if deception_type == "diversionary":
         deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
                     policy_opt.diversionary_deception(occupancy_measures, beta = beta)
-    elif type == "targeted":
+    elif deception_type == "targeted":
         deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
                     policy_opt.targeted_deception(target_occupancy_measure, beta = beta)
-    elif type == "equivocal":
+    elif deception_type == "equivocal":
         deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
                     policy_opt.equivocal_deception()
     else:
@@ -142,7 +134,7 @@ def run_all(N_agents, beta, target_agents=[0], decoy_agents = [1], num_traj =100
 
     ## 3. Solve IRL
     print("Solving IRL...")
-    trajectories = irl.generate_trajectories(deceptive_policy, num_traj, len_traj)
+    trajectories = irl.generate_trajectories(deceptive_policy, irl_num_traj, irl_len_traj)
     estimated_value_function = irl.estimate_value_function(np.expand_dims(trajectories, axis = 0))
         
     scale = np.sum(np.abs(value_function))
@@ -189,24 +181,18 @@ def run_all(N_agents, beta, target_agents=[0], decoy_agents = [1], num_traj =100
 
     return result
 
-beta_vec = np.arange(0,0.3,0.03)
-
 if __name__ == '__main__':
+    
     with mp.Pool() as pool:
         
-        N_agents = 3
-        target_agents = [0]
-        decoy_agents = [1,2]
+        print([(beta_vec[i]) for i in range(len(beta_vec))])
         
-        diversionary_results = pool.starmap(run_all, [(N_agents, beta_vec[i],target_agents, decoy_agents, 100,100, "diversionary",7) for i in range(len(beta_vec))])
-        targeted_results = pool.starmap(run_all, [(N_agents, beta_vec[i],target_agents, decoy_agents, 00,100, "targeted",7) for i in range(len(beta_vec))])
-        equivocal_results = pool.starmap(run_all, [(N_agents, beta_vec[i],target_agents, decoy_agents, 100,100, "equivocal",7) for i in range(len(beta_vec))])
+        results = pool.starmap(run_all, [(beta_vec[i],) for i in range(len(beta_vec))])
         
         experiment_logger = {
             'beta_vec': beta_vec,
-            'diversionary_results' : diversionary_results, 
-            'targeted_results' : targeted_results, 
-            'equivocal_results' : equivocal_results
+            'deception_type' : deception_type,
+            # 'results' : results
         }
         
         save_file_name = 'result.pkl'
