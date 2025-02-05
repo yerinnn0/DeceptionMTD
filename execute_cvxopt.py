@@ -10,7 +10,7 @@ import multiprocessing as mp
 import pickle
 import os
 
-def run_all(beta):
+def run_all(beta, i):
     
     def calculate_error(true_value_func, estimated_value_func, scale = None):
         """
@@ -113,23 +113,99 @@ def run_all(beta):
     irl = IRL(mmdp, epochs = irl_epoch, learning_rate = irl_learning_rate)
     
     # 1. Solve LP
-    occupancy_measures, policy, value_function, revenue = policy_opt.solve_lp_cvxopt()
+    lp_file_name = save_file_format['lp']
+    if lp_file_name in os.listdir():
+        save_str = os.path.abspath(os.path.join(os.path.abspath(os.path.curdir), lp_file_name))
+        with open(save_str, 'rb') as f:
+            exp_logger = pickle.load(f)
+            
+        lp_result = exp_logger['results']
+        occupancy_measures = lp_result[0]["occupancy_measure"]["occupancy_measure"]
+        policy = lp_result[0]["policy"]["policy"]
+        value_function = lp_result[0]["value_function"]["value_function"]
+        revenue = lp_result[0]["revenue"]["revenue"]
+    else:
+        occupancy_measures, policy, value_function, revenue = policy_opt.solve_lp_cvxopt()
+        
+        result = {
+            'value_function':{
+                'value_function': value_function
+            },
+            'policy':{
+                'policy': policy
+            },
+            'revenue':{
+                'revenue': revenue
+            },
+            'reward':{
+                'reward': mmdp.joint_rewards
+            },
+            'occupancy_measure':{
+                'occupancy_measure':occupancy_measures,
+                'target_occupancy_measure': target_occupancy_measure
+            },
+            'transition_matrix': mmdp.transition_matrices
+        }
+        
+        return result
 
     ## 2. Solve QP
-    if deception_type == "diversionary":
-        deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
-                    policy_opt.diversionary_deception(occupancy_measures, beta = beta)
-    elif deception_type == "targeted":
-        deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
-                    policy_opt.targeted_deception(target_occupancy_measure, beta = beta)
-    elif deception_type == "equivocal":
-        deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
-                    policy_opt.equivocal_deception()
-    else:
-        print ("Undefined Deception Type")
+    deception_file_name = save_file_format['deception']
+    if deception_file_name in os.listdir():
+        save_str = os.path.abspath(os.path.join(os.path.abspath(os.path.curdir), deception_file_name))
+        with open(save_str, 'rb') as f:
+            exp_logger = pickle.load(f)
+            
+        deception_result = exp_logger['results']
+        deceptive_occupancy_measures = deception_result[i]["occupancy_measure"]["deceptive_occupancy_measure"]
+        deceptive_policy = deception_result[i]["policy"]["deceptive_policy"]
+        deceptive_value_function = deception_result[i]["value_function"]["deceptive_value_function"]
+        deceptive_revenue = deception_result[i]["revenue"]["deceptive_revenue"]
         
-    assert(deceptive_occupancy_measures >= 0).all()
-    assert(deceptive_policy >= 0).all()
+        assert(deceptive_occupancy_measures >= 0).all()
+        assert(deceptive_policy >= 0).all()
+        
+    else:
+        if deception_type == "diversionary":
+            deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
+                        policy_opt.diversionary_deception(occupancy_measures, beta = beta)
+        elif deception_type == "targeted":
+            deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
+                        policy_opt.targeted_deception(target_occupancy_measure, beta = beta)
+        elif deception_type == "equivocal":
+            deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
+                        policy_opt.equivocal_deception()
+        else:
+            print ("Undefined Deception Type")
+            
+        assert(deceptive_occupancy_measures >= 0).all()
+        assert(deceptive_policy >= 0).all()
+        
+        result = {
+            'value_function':{
+                'value_function': value_function,
+                'deceptive_value_function': deceptive_value_function
+            },
+            'policy':{
+                'policy': policy,
+                'deceptive_policy': deceptive_policy
+            },
+            'revenue':{
+                'revenue': revenue,
+                'deceptive_revenue':deceptive_revenue
+            },
+            'reward':{
+                'reward': mmdp.joint_rewards
+            },
+            'occupancy_measure':{
+                'occupancy_measure':occupancy_measures,
+                'deceptive_occupancy_measure': deceptive_occupancy_measures,
+                'target_occupancy_measure': target_occupancy_measure
+            },
+            'transition_matrix': mmdp.transition_matrices
+        }
+        
+        return result
 
 
     ## 3. Solve IRL
@@ -157,9 +233,9 @@ def run_all(beta):
             'self_estimated_value_function': irl.self_estimated_value_function
         },
         'policy':{
-          'policy': policy,
-          'deceptive_policy': deceptive_policy,
-          'estimated_policy': irl.estimated_policy  
+            'policy': policy,
+            'deceptive_policy': deceptive_policy,
+            'estimated_policy': irl.estimated_policy  
         },
         'revenue':{
             'revenue': revenue,
@@ -185,19 +261,47 @@ if __name__ == '__main__':
     
     with mp.Pool() as pool:
         
-        print([(beta_vec[i]) for i in range(len(beta_vec))])
-        
-        results = pool.starmap(run_all, [(beta_vec[i],) for i in range(len(beta_vec))])
+        results = pool.starmap(run_all, [(beta_vec[i],i) for i in range(len(beta_vec))])
         
         experiment_logger = {
             'beta_vec': beta_vec,
             'deception_type' : deception_type,
-            # 'results' : results
+            'results' : results
         }
         
-        save_file_name = 'result.pkl'
+        if 'observed_trajectory' in results[0]:
+            simulation_type = 'irl'
+        elif 'deceptive_policy' in results[0]['policy']:
+            simulation_type = 'deception'
+        else:
+            simulation_type = 'lp'
+            
+        save_file_name = save_file_format[simulation_type]
         save_str = os.path.abspath(os.path.join(os.path.abspath(os.path.curdir), save_file_name))
         with open(save_str, 'wb') as f:
             pickle.dump(experiment_logger, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print(save_file_name + "Saved")
+            
+        while simulation_type != 'irl':
+            results = pool.starmap(run_all, [(beta_vec[i],i) for i in range(len(beta_vec))])
+        
+            experiment_logger = {
+                'beta_vec': beta_vec,
+                'deception_type' : deception_type,
+                'results' : results
+            }
+            
+            if 'observed_trajectory' in results[0]:
+                simulation_type = 'irl'
+            elif 'deceptive_policy' in results[0]['policy']:
+                simulation_type = 'deception'
+            else:
+                simulation_type = 'lp'
+            
+            save_file_name = save_file_format[simulation_type]
+            save_str = os.path.abspath(os.path.join(os.path.abspath(os.path.curdir), save_file_name))
+            with open(save_str, 'wb') as f:
+                pickle.dump(experiment_logger, f, protocol=pickle.HIGHEST_PROTOCOL)
+            print(save_file_name + "Saved")
       
 

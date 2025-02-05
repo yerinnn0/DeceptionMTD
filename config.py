@@ -25,11 +25,9 @@ real_agents = [0]
 target_decoy_agents = [1]
 
 ### File Name
-simulation_type = 'all'
 save_file_format = {
     'all': 'result_'+str(N_agents)+'_all.pkl',
     'lp': 'result_'+str(N_agents)+'_lp.pkl',
     'deception': 'result_'+str(N_agents)+'_'+deception_type[:3]+'_opt.pkl',
     'irl': 'result_'+str(N_agents)+'_'+deception_type[:3]+'_irl.pkl',
 }
-save_file_name = save_file_format[simulation_type]
