@@ -1,9 +1,9 @@
 ## Files
 
 - `MDP.py` includes settings and functions for multi-agent MDP.
-- `policy_optimization_cvxopt.py` includes settings and functions for solving MMDP as optimization problem.
-- `irl_maxent_rsa.py` includes settings and functions for generating trajectory and solving IRL.
-- `execute_cvxopt.py` includes codes for parameter setting and execution.
+- `policy_optimization` includes settings and functions for solving MMDP as optimization problem.
+- `IRL` includes settings and functions for generating trajectory and solving IRL.
+- `execute_serial.py` includes codes for parameter setting and execution.
   
       1. Set up the problem
   
@@ -17,15 +17,21 @@
 
 ## Execution
 
-You can execute the whole simulation by running `execute_cvxopt.py`.
+You can execute the whole simulation by running `execute_serial.py`.
 
 ## Change Settings
 
-1. At the end of `execute_cvxopt.py`, you can change the following parameters.
+At `config.py`, you can change the following parameters.
+  - MMDP_SETTINGS = {
+      "N_agents", "n_local_states",  "n_local_actions", "local_initial_state", "local_goal_state", "gamma", "v_reach"
+  }
+  - IRL_SETTINGS = {
+      "irl_model", "irl_epoch", "irl_learning_rate", "irl_num_traj", "irl_len_traj", "irl_max_iter"
+  }
+  - DECEPTION_SETTINGS = {
+      "target_occupancy_measure_values", "deception_type", "beta_vec", "real_agents", "target_decoy_agents"
+  }
+  - OPTIMIZATION_SETTINGS = {
+      "optimization_solver"
+  }
 
-- **$\beta$** (Deception parameter): `beta_vec = np.arange(0,0.3,0.03)`
-- **N_agents** (Number of agents): `N_agents = 3`
-- **target_agents** (List of index of true target among N agents): `target_agents = [0]`
-- **decoy_agents** (List of index of decoy target which we want to mislead adversary to(Used in targeted deception and equivocal deception)): `decoy_agents = [1,2]`
-
-2. At the end of the function `run_all` in `execute_cvxopt.py`, you can add or change the format of saving the result.
