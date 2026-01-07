@@ -33,6 +33,17 @@ from osqp import algebras_available
 
 def run_all_serial(beta_vec):
 
+    def move_dict_to_cpu(d):
+        """
+        Recursively move all torch tensors in a nested dictionary to CPU.
+        """
+        if isinstance(d, dict):
+            return {k: move_dict_to_cpu(v) for k, v in d.items()}
+        elif isinstance(d, torch.Tensor):
+            return d.detach().cpu()  # detach() if it requires grad
+        else:
+            return d
+
     def make_json_serializable(obj):
 
         if isinstance(obj, np.ndarray):
@@ -114,14 +125,23 @@ def run_all_serial(beta_vec):
         decoy_states = []
         
         for i in real_agents:
-            goal_states.extend(find_the_joint_state(n_local_states, N_agents, i, local_goal_state))
+            agent_states = []
+            for k in range(n_local_states):
+                agent_states.append(find_the_joint_state(n_local_states, N_agents, i, k))
+            goal_states.append(agent_states)
+
         for i in target_decoy_agents:
-            decoy_states.extend(find_the_joint_state(n_local_states, N_agents, i, local_goal_state))
+            agent_states = []
+            for k in range(n_local_states):
+                agent_states.append(find_the_joint_state(n_local_states, N_agents, i, k))
+            decoy_states.append(agent_states)
+
+        # print("Goal states:", np.array(goal_states).shape, "Decoy states:", np.array(decoy_states).shape)
         
-        return np.array(goal_states), np.array(decoy_states)
+        return np.array(goal_states), np.array(decoy_states) # (n_real_agents, n_local_states, n_joint_states), (n_decoy_agents, n_local_states, n_joint_states)
     
     def build_target_occupancy_measure(n_local_states, n_local_actions, N_agents, target_decoy_agents = [1]):
-        """
+        """ 
         Set target occupancy measure
         
         return: Target occupancy measure as array with shape (mmdp.n_joint_states,mmdp.n_joint_actions)
@@ -262,7 +282,7 @@ def run_all_serial(beta_vec):
                 'transition_matrix': mmdp.transition_matrices
             }
 
-            return [result]
+            return [move_dict_to_cpu(result)]
 
 
     ## 2. Solve QP
@@ -300,15 +320,18 @@ def run_all_serial(beta_vec):
             
         results = []
         for beta in beta_vec:
+
+            print(beta)
+
             if deception_type == "diversionary":
                 deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
                             deception_solver.diversionary_deception(occupancy_measures, init = occupancy_measures, beta = beta)
             elif deception_type == "targeted":
                 deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
-                            deception_solver.targeted_deception(target_occupancy_measure, initvals = occupancy_measures, beta = beta)
+                            deception_solver.targeted_deception(target_occupancy_measure, original_occupancy_measures = occupancy_measures, beta = beta)
             elif deception_type == "equivocal":
                 deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
-                            deception_solver.equivocal_deception(beta = beta)
+                            deception_solver.equivocal_deception(original_occupancy_measures = occupancy_measures, beta = beta)
             else:
                 print ("Undefined Deception Type")
             
@@ -348,9 +371,17 @@ def run_all_serial(beta_vec):
                 }
                 
                 time0 = time.time()
-                results.append(result)
+                results.append(move_dict_to_cpu(result))
                 # results.append(make_json_serializable(result))
                 # print("Time for making json serializable:", time.time()-time0)
+
+                # Save
+                simulation_type = 'deception'
+                save_file_name = save_file_format[simulation_type][:-4]+"_"+str(np.round(beta,2))+".pkl"
+                save_str = os.path.abspath(os.path.join(os.path.abspath(os.path.curdir), save_file_name))
+                with open(save_str, 'wb') as f:
+                    pickle.dump(results[-1], f, protocol=pickle.HIGHEST_PROTOCOL)
+                print(save_file_name + " Saved")
 
         if SAVE_INTERMEDIATE_RESULT:
             
@@ -413,9 +444,9 @@ def run_all_serial(beta_vec):
         else:
             deceptive_revenue = np.array(deceptive_revenue)
 
-        print("Generating Trajectories")
+        # print("Generating Trajectories")
         trajectories = irl.generate_trajectories_batched(deceptive_policy, irl_num_traj, irl_len_traj)
-        print("Generated Trajectories")
+        # print("Generated Trajectories")
         estimated_value_function = irl.estimate_value_function(trajectories.unsqueeze(0))
         # estimated_value_function = irl.estimate_value_function(np.expand_dims(trajectories, axis = 0))
   
@@ -468,7 +499,8 @@ def run_all_serial(beta_vec):
             # 'transition_matrix': mmdp.transition_matrices
         }
 
-        results.append(make_json_serializable(result))
+        results.append(move_dict_to_cpu(result))
+        # results.append(make_json_serializable(result))
 
     return results
 
