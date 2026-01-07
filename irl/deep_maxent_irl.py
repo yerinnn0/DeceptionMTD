@@ -10,14 +10,14 @@ import os
 import torch
 import torch.nn as nn
 
+from tqdm import tqdm
+
 
 class DeepMaxEntIRL(IRL):
     
     def __init__(self, mmdp, feature_map = "identity", epochs=100, learning_rate=0.0001, layers = (128,64)):
         super(DeepMaxEntIRL, self).__init__(mmdp, feature_map)
-        
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+                
         def sparse_scipy_to_torch(coo):
             values = torch.tensor(coo.data, dtype=torch.float32)
             indices = torch.vstack((torch.tensor(coo.row), torch.tensor(coo.col))).long()
@@ -78,8 +78,8 @@ class DeepMaxEntIRL(IRL):
         # trajectories : (traj_number, steps, 2)
 
         # Gradient descent on alpha.
-        for i in range(self.epochs):
-            print("epoch:", i)
+        for i in tqdm(range(self.epochs)):
+            # print("epoch:", i)
             # r = self.feature_matrix.dot(alpha)
             r = self.forward(feature_matrix).flatten()   # (n_states * n_actions, )
             scale = torch.sum(torch.abs(r))
@@ -97,7 +97,7 @@ class DeepMaxEntIRL(IRL):
             self.optim.zero_grad()
             r.backward(gradient =-grad)
             self.optim.step()
-            print("loss:", loss, "grad:", torch.mean(grad), "grad_norm:", torch.norm(svf - expected_svf), scale)
+            # print("loss:", loss, "grad:", torch.mean(grad), "grad_norm:", torch.norm(svf - expected_svf), scale)
             
         # return self.feature_matrix.dot(alpha).reshape((n_states * n_actions,))  # (n_states * n_actions, )
         return r.detach().cpu().numpy().reshape((n_states * n_actions,))
