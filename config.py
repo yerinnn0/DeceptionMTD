@@ -2,11 +2,11 @@ import numpy as np
 
 
 SAVE_INTERMEDIATE_RESULT = True
-EXPERIMENT_NAME = "irl_average2"
+EXPERIMENT_NAME = "final"
 
 
 ### MMDP Settings
-N_agents = 4
+N_agents = 5
 n_local_states = 4
 n_local_actions = 3
 local_initial_state = 0
@@ -17,11 +17,11 @@ feature_map = "identity"
 build_transition_matrix = True
 
 ### IRL Settings
-irl_model = 'apprenticeship'
-irl_repetitions = np.arange(49,50,1)
+irl_model = 'maxent'
+irl_repetitions = np.arange(75,0,-1)
 
 if irl_model == "maxent":
-    irl_epoch = 20
+    irl_epoch = 50
     irl_learning_rate = 0.5
     irl_layers = None
     irl_num_traj = 500
@@ -38,23 +38,28 @@ elif irl_model == "apprenticeship":
     irl_epoch = None
     irl_learning_rate = None
     irl_layers = None
-    irl_num_traj = 100
-    irl_len_traj = 100
-    irl_max_iter = 300
+    irl_num_traj = 500
+    irl_len_traj = 500
+    irl_max_iter = 500
 
 
 ### Deception Settings
 target_occupancy_measure_values = [3,1,-1,-3]
 deception_type = 'equivocal'
-start_beta = 0
-end_beta = 1.1
-beta_step = 0.1
+start_beta = 1
+end_beta = 1.21
+beta_step = 0.5
 beta_vec = np.arange(start_beta, end_beta, beta_step)
 real_agents = [0]
 target_decoy_agents = [1]
 
 ### Optimization Settings
-optimization_solver = {'mdp': 'gurobi', 'diversionary':'pyomo', 'targeted':'gurobi', 'equivocal':'gurobi'}
+"""
+Recommended solvers:
+    'mdp', 'diversionary', 'targeted' : 'pyomo',
+    'equivocal' : 'gurobi'
+"""
+optimization_solver = {'mdp': 'pyomo', 'diversionary':'pyomo', 'targeted':'pyomo', 'equivocal':'gurobi'}
 
 ### MMDP Settings
 MMDP_SETTINGS = {
