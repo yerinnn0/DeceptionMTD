@@ -13,23 +13,41 @@ import time
 from config import *
 
 from MDP import create_rewards, create_decoy_rewards, MultiAgentGridworld
+from GridworldMDP import (
+    MultiAgentGridworld as Gridworld,
+    create_rewards as create_gridworld_rewards,
+)
 # from cp_MDP import create_rewards, create_decoy_rewards, MultiAgentGridworld
-
-from policy_optimization.policy_optimization_scipy import PolicyOptimizationScipy
-from policy_optimization.policy_optimization_cvxopt import PolicyOptimizationCVXOPT
-from policy_optimization.policy_optimization_osqp import PolicyOptimizationOSQP
-from policy_optimization.policy_optimization_gd import PolicyOptimizationGD
-from policy_optimization.policy_optimization_qpth import PolicyOptimizationQPTH
-# from policy_optimization.policy_optimization_ipopt import PolicyOptimizationIPOPT
-from policy_optimization.policy_optimization_gurobi import PolicyOptimizationGurobi
-from policy_optimization.policy_optimization_pyomo import PolicyOptimizationPyomo
 
 from irl.maxent_irl import MaxEntIRL
 # from irl.linear_irl import LinearIRL
 from irl.deep_maxent_irl import DeepMaxEntIRL
 from irl.apprenticeship_learning import ApprenticeshipIRL
 
-from osqp import algebras_available
+def build_optimizer(solver_name, mmdp):
+    """Import only the selected solver and construct it."""
+    if solver_name == "scipy":
+        from policy_optimization.policy_optimization_scipy import PolicyOptimizationScipy
+        return PolicyOptimizationScipy(mmdp)
+    if solver_name == "cvxopt":
+        from policy_optimization.policy_optimization_cvxopt import PolicyOptimizationCVXOPT
+        return PolicyOptimizationCVXOPT(mmdp)
+    if solver_name == "osqp":
+        from policy_optimization.policy_optimization_osqp import PolicyOptimizationOSQP
+        return PolicyOptimizationOSQP(mmdp)
+    if solver_name == "gd":
+        from policy_optimization.policy_optimization_gd import PolicyOptimizationGD
+        return PolicyOptimizationGD(mmdp)
+    if solver_name == "qpth":
+        from policy_optimization.policy_optimization_qpth import PolicyOptimizationQPTH
+        return PolicyOptimizationQPTH(mmdp)
+    if solver_name == "gurobi":
+        from policy_optimization.policy_optimization_gurobi import PolicyOptimizationGurobi
+        return PolicyOptimizationGurobi(mmdp)
+    if solver_name == "pyomo":
+        from policy_optimization.policy_optimization_pyomo import PolicyOptimizationPyomo
+        return PolicyOptimizationPyomo(mmdp)
+    raise ValueError(f"Unknown optimization solver: {solver_name}")
 
 def run_all_serial(beta_vec):
 
@@ -164,24 +182,62 @@ def run_all_serial(beta_vec):
     
     time0 = time.time()
 
-    # Deterministic Initial States
-    initial_distribution = np.zeros((n_local_states, N_agents))
-    initial_distribution[local_initial_state] = 1
-    initial_distribution = initial_distribution.T.reshape(-1,1)
+    if environment_name == "mtd":
+        # Original multi-agent cyber MDP setup.
+        initial_distribution = np.zeros((n_local_states, N_agents))
+        initial_distribution[local_initial_state] = 1
+        initial_distribution = initial_distribution.T.reshape(-1, 1)
 
-    
-    # Rewards
-    rewards = build_multi_agent_rewards(n_local_states, n_local_actions, N_agents, real_agents)
-       
-    # Deterministic goal states
-    goal_states, decoy_states = determine_goal_decoy_states(n_local_states, N_agents, real_agents, target_decoy_agents)
-    
-    # Target occupancy measure
-    target_occupancy_measure = build_target_occupancy_measure(n_local_states, n_local_actions, N_agents, target_decoy_agents)
-    
-    mmdp = MultiAgentGridworld(N_agents, initial_distribution, n_local_states, n_local_actions, rewards, gamma, v_reach, build_transition_matrix=build_transition_matrix)
-    
-    mmdp.set_goal_states(goal_states, decoy_states)
+        rewards = build_multi_agent_rewards(
+            n_local_states, n_local_actions, N_agents, real_agents
+        )
+        goal_states, decoy_states = determine_goal_decoy_states(
+            n_local_states, N_agents, real_agents, target_decoy_agents
+        )
+        target_occupancy_measure = build_target_occupancy_measure(
+            n_local_states, n_local_actions, N_agents, target_decoy_agents
+        )
+
+        mmdp = MultiAgentGridworld(
+            N_agents,
+            initial_distribution,
+            n_local_states,
+            n_local_actions,
+            rewards,
+            gamma,
+            v_reach,
+            build_transition_matrix=build_transition_matrix,
+        )
+        mmdp.set_goal_states(goal_states, decoy_states)
+
+    elif environment_name == "gridworld":
+        # Single-agent stochastic configurable gridworld setup.
+        initial_distribution = np.zeros(n_local_states, dtype=float)
+        initial_distribution[local_initial_state] = 1.0
+        rewards = create_gridworld_rewards(
+            path_reward=path_reward,
+            terminal_reward=terminal_reward,
+            movement_cost=movement_cost,
+            grid_shape=grid_shape,
+        )
+        mmdp = Gridworld(
+            N_agents,
+            initial_distribution,
+            n_local_states,
+            n_local_actions,
+            rewards,
+            gamma,
+            v_reach,
+            build_transition_matrix=build_transition_matrix,
+            grid_shape=grid_shape,
+            start=grid_start_coord,
+            terminal=grid_terminal_coord,
+            x_tar=x_tar,
+        )
+        target_occupancy_measure = mmdp.x_tar.copy()
+
+    else:
+        raise ValueError(f"Unknown environment_name: {environment_name}")
     
     print("Time for setting up MDP :", time.time()-time0)
     
@@ -237,20 +293,7 @@ def run_all_serial(beta_vec):
 
         print("LP result not found")
 
-        if optimization_solver['mdp'] == "scipy":
-            mdp_solver = PolicyOptimizationScipy(mmdp)
-        elif optimization_solver['mdp'] == "cvxopt":
-            mdp_solver = PolicyOptimizationCVXOPT(mmdp)
-        elif optimization_solver['mdp'] == "osqp":
-            mdp_solver = PolicyOptimizationOSQP(mmdp)
-        elif optimization_solver['mdp'] == "gd":
-            mdp_solver = PolicyOptimizationGD(mmdp)
-        if optimization_solver['mdp'] == "gurobi":
-            mdp_solver = PolicyOptimizationGurobi(mmdp)
-        if optimization_solver['mdp'] == "pyomo":
-            mdp_solver = PolicyOptimizationPyomo(mmdp)
-
-            
+        mdp_solver = build_optimizer(optimization_solver['mdp'], mmdp)
         occupancy_measures, policy, value_function, revenue =mdp_solver.solve_MDP()
         
         if SAVE_INTERMEDIATE_RESULT:
@@ -299,25 +342,9 @@ def run_all_serial(beta_vec):
     else:
         print("Deception result not found")
 
-        if optimization_solver[deception_type] == "scipy":
-            deception_solver = PolicyOptimizationScipy(mmdp)
-        elif optimization_solver[deception_type] == "cvxopt":
-            deception_solver = PolicyOptimizationCVXOPT(mmdp)
-        elif optimization_solver[deception_type] == "osqp":
-            deception_solver = PolicyOptimizationOSQP(mmdp)
-        # elif optimization_solver[deception_type] == "ipopt":
-        #     deception_solver = PolicyOptimizationIPOPT(mmdp)
-        elif optimization_solver[deception_type] == "gd":
-            deception_solver = PolicyOptimizationGD(mmdp)
-        elif optimization_solver[deception_type] == "qpth":
-            deception_solver = PolicyOptimizationQPTH(mmdp)
-        if optimization_solver[deception_type] == "gurobi":
-            deception_solver = PolicyOptimizationGurobi(mmdp)
-        if optimization_solver[deception_type] == "pyomo":
-            deception_solver = PolicyOptimizationPyomo(mmdp)
-
-        # deception_solver = None
-            
+        deception_solver = build_optimizer(
+            optimization_solver[deception_type], mmdp
+        )
         results = []
         for beta in beta_vec:
 
@@ -325,13 +352,13 @@ def run_all_serial(beta_vec):
 
             if deception_type == "diversionary":
                 deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
-                            deception_solver.diversionary_deception(occupancy_measures, init = occupancy_measures, beta = beta)
+                            deception_solver.diversionary_deception(occupancy_measures, init = np.zeros(occupancy_measures.shape), beta = beta)
             elif deception_type == "targeted":
                 deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
-                            deception_solver.targeted_deception(target_occupancy_measure, original_occupancy_measures = occupancy_measures, beta = beta)
+                            deception_solver.targeted_deception(target_occupancy_measure, initvals = occupancy_measures, beta = beta)
             elif deception_type == "equivocal":
                 deceptive_occupancy_measures, deceptive_policy, deceptive_value_function, deceptive_revenue = \
-                            deception_solver.equivocal_deception(original_occupancy_measures = occupancy_measures, beta = beta)
+                            deception_solver.equivocal_deception(initvals = occupancy_measures, beta = beta)
             else:
                 print ("Undefined Deception Type")
             
@@ -386,6 +413,25 @@ def run_all_serial(beta_vec):
         if SAVE_INTERMEDIATE_RESULT:
             
             return results
+
+    if not RUN_IRL:
+        # If the consolidated deception result already exists, return it so
+        # the main routine can classify the completed phase and terminate.
+        if deception_file_name in os.listdir():
+            save_str = os.path.abspath(
+                os.path.join(os.path.abspath(os.path.curdir), deception_file_name)
+            )
+            with open(save_str, 'rb') as f:
+                return pickle.load(f)['results']
+        if deception_file_name_json in os.listdir():
+            save_str = os.path.abspath(
+                os.path.join(os.path.abspath(os.path.curdir), deception_file_name_json)
+            )
+            with open(save_str, 'r') as f:
+                return json.load(f)['results']
+        if 'results' in locals():
+            return results
+        raise RuntimeError("Deception optimization finished without saved results")
 
     ## 3. Solve IRL
     print("Setting IRL")
@@ -556,7 +602,7 @@ if __name__ == '__main__':
     # print(save_file_name_json + " Saved")
         
         
-    while simulation_type != 'irl':
+    while simulation_type != 'irl' and (RUN_IRL or simulation_type != 'deception'):
 
         for k in irl_repetitions:
             results= run_all_serial(beta_vec)
@@ -599,4 +645,3 @@ if __name__ == '__main__':
         #     json.dump(experiment_logger, f, indent=2)
         # print(save_file_name_json + " Saved")
       
-

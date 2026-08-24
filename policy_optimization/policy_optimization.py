@@ -34,14 +34,24 @@ class PolicyOptimization:
         self.A_fl -= self.gamma*T
         self.A_fl = sp.csr_matrix(self.A_fl)
         
-        self.A_r = sp.csr_matrix(-np.sum(self.transitions[:, :, self.mmdp.goal_states], axis=-1).reshape(1, -1))
+        # Gridworld completion uses only the terminal; legacy MTD environments
+        # fall back to their existing goal-state reachability definition.
+        self.task_states = np.asarray(
+            getattr(self.mmdp, "task_states", self.mmdp.goal_states), dtype=int
+        ).reshape(-1)
+        self.A_r = sp.csr_matrix(
+            -np.sum(self.transitions[:, :, self.task_states], axis=-1).reshape(1, -1)
+        )
         
         self.A_p = -2 * sp.eye(self.n_states * self.n_actions, format='csr')
-        
+
         self.A_eq = sp.lil_matrix((self.n_states, self.n_actions),dtype = float)
+        equivocal_goal_states = getattr(
+            self.mmdp, "preferred_states", self.mmdp.goal_states
+        )
         for s in range(self.n_states):
-            if s in self.mmdp.goal_states:
-                self. A_eq[s, :] = self.A_eq[s, :].toarray().flatten() + 1 
+            if s in equivocal_goal_states:
+                self. A_eq[s, :] = self.A_eq[s, :].toarray().flatten() + 1
             if s in self.mmdp.decoy_states:
                 self. A_eq[s, :] = self.A_eq[s, :].toarray().flatten() - 1 
         self.A_eq = 1 * self.A_eq.reshape(1, -1).tocsr()
@@ -109,7 +119,12 @@ class PolicyOptimization:
                 for a in range(self.mmdp.n_joint_actions):
                     occupancy_in[s2] += self.mmdp.transition_matrices[s, a, s2] * X[s, a]
                     
-        return occupancy_out - self.mmdp.gamma * occupancy_in - self.mmdp.initial_distribution
+        initial_distribution = getattr(
+            self.mmdp,
+            "initial_joint_distribution",
+            self.mmdp.initial_distribution,
+        )
+        return occupancy_out - self.mmdp.gamma * occupancy_in - np.asarray(initial_distribution).reshape(-1)
 
     def reachability_constraint(self,X_flat):
 
@@ -117,7 +132,7 @@ class PolicyOptimization:
         # X_scaled = X/np.sum(X)
         transitions = self.mmdp.transition_matrices # (n_states, n_actions, n_states)
 
-        P = sum([X * transitions[:,:,i] for i in self.mmdp.goal_states])
+        P = sum([X * transitions[:, :, i] for i in self.task_states])
         P = np.sum(P)
 
         return P - self.mmdp.v_reach 
@@ -126,7 +141,10 @@ class PolicyOptimization:
 
         X = X_flat.reshape(self.mmdp.n_joint_states, self.mmdp.n_joint_actions)
     
-        return np.sum(X[self.mmdp.goal_states]) - np.sum(X[self.mmdp.decoy_states])
+        preferred_states = getattr(
+            self.mmdp, "preferred_states", self.mmdp.goal_states
+        )
+        return np.sum(X[preferred_states]) - np.sum(X[self.mmdp.decoy_states])
     
         
     def solve_MDP(self):

@@ -21,7 +21,7 @@ class IRL:
             # self.feature_matrix = np.eye(mmdp.n_joint_states*mmdp.n_joint_actions)
             self.feature_matrix = sp.identity(mmdp.n_joint_states*mmdp.n_joint_actions, format='coo')
         else:
-            self.feature_matrix = sp.csr_matrix(mmdp.feature_matrix(feature_map = feature_map)) # Numpy array
+            self.feature_matrix = sp.coo_matrix(mmdp.feature_matrix(feature_map = feature_map))
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -100,7 +100,11 @@ class IRL:
 
         # Initialize starting states
         if reset_s0:
-            s0 = torch.randint(0, self.mmdp.joint_transition_matrix_t.shape[0], (num_traj,), device=self.device)
+            s0 = torch.multinomial(
+                self.mmdp.initial_joint_distribution_t,
+                num_samples=num_traj,
+                replacement=True,
+            )
         else:
             s0 = torch.as_tensor([self.mmdp.s0] * num_traj, dtype=torch.long, device=self.device)
 
@@ -344,7 +348,7 @@ class IRL:
             # Compute Q(s, a) = r(s,a) + gamma * sum_s' T(s,a,s') * V(s')
             # Use einsum for fast batch matrix multiply:
             #   transitions: (s, a, s') * value_function: (s') -> (s, a)
-            expected_values = gamma * torch.einsum('sas,s->sa', transitions, value_function)
+            expected_values = gamma * torch.einsum('sak,k->sa', transitions, value_function)
             q_values = reward + expected_values  # shape (s, a)
 
             # Soft value iteration: V(s) = logsumexp(Q(s,a))
@@ -508,11 +512,15 @@ class IRL:
         #     p_start[state * n_actions + action] += 1
         # p_start /= n_trajectories
 
-        first_sa = trajectories[:, 0, :2].long()  # shape: (n_trajectories, 2)
-        flat_indices = first_sa[:, 0] * n_actions + first_sa[:, 1]
-        p_start = torch.zeros(n_states * n_actions, dtype=torch.float32, device=device)
-        p_start.scatter_add_(0, flat_indices, torch.ones_like(flat_indices, dtype=torch.float32))
-        p_start /= n_trajectories
+        first_states = trajectories[:, 0, 0].long()
+        p_start_state = torch.zeros(n_states, dtype=torch.float32, device=device)
+        p_start_state.scatter_add_(
+            0,
+            first_states,
+            torch.ones_like(first_states, dtype=torch.float32),
+        )
+        p_start_state /= n_trajectories
+        p_start = (p_start_state[:, None] * policy).reshape(-1)
 
         expected_svf = torch.zeros((n_states * n_actions, trajectory_length), dtype=torch.float32, device=device)
         expected_svf[:, 0] = p_start
@@ -533,14 +541,12 @@ class IRL:
         #     expected_svf[:, t] = (policy * marginal_next).view(-1) * gamma
 
         for t in range(1, trajectory_length):
-            prev_svf = expected_svf[:, t-1].view(n_states, n_actions)   # (s, a)
-            marginal_prev_s = prev_svf.sum(dim=1)                       # (s,)
-
-            # Compute marginal_next[s', a] = ∑_s T[s', a, s] * marginal_prev_s[s]
-            marginal_next = torch.einsum('sap,p->sa', transition_probability, marginal_prev_s)  # (s', a)
-
-            # Update expected_svf for time t
-            expected_svf[:, t] = (policy * marginal_next).reshape(-1) * gamma
+            prev_svf = expected_svf[:, t-1].view(n_states, n_actions)
+            marginal_prev_s = prev_svf.sum(dim=1)
+            marginal_next_s = torch.einsum(
+                's,sak->k', marginal_prev_s, transition_probability
+            )
+            expected_svf[:, t] = (marginal_next_s[:, None] * policy).reshape(-1) * gamma
 
         return expected_svf.sum(dim=1)  # (n_states * n_actions,)
 

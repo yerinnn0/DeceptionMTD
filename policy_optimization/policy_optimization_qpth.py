@@ -85,8 +85,8 @@ class PolicyOptimizationQPTH(PolicyOptimization):
         q = ((2 * beta) * target_occupancy_measures.flatten() - self.r.flatten()).astype(np.float64)
         
         P_dense = P.toarray()  # Convert sparse to dense NumPy array
-        P_torch = torch.tensor(P_dense, dtype=torch.float64).cuda() 
-        q_torch = torch.tensor(q, dtype=torch.float64).cuda()
+        P_torch = torch.tensor(P_dense, dtype=torch.float64, device=self.device)
+        q_torch = torch.tensor(q, dtype=torch.float64, device=self.device)
 
         # Solve QP problem
         

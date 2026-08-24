@@ -8,6 +8,16 @@ import time
 from .policy_optimization import PolicyOptimization
 
 
+def _as_numpy_matrix(value, shape, name):
+    """Convert NumPy/Torch occupancy inputs at the SciPy solver boundary."""
+    if hasattr(value, "detach"):
+        value = value.detach().cpu().numpy()
+    array = np.asarray(value, dtype=np.float64)
+    if array.size != int(np.prod(shape)):
+        raise ValueError(f"{name} must contain {int(np.prod(shape))} values")
+    return array.reshape(shape)
+
+
 class PolicyOptimizationScipy(PolicyOptimization):
 
     def __init__(self, mmdp):
@@ -47,14 +57,21 @@ class PolicyOptimizationScipy(PolicyOptimization):
         n_states = self.mmdp.n_joint_states
         n_actions = self.mmdp.n_joint_actions
         beta = beta
-        r = self.mmdp.joint_rewards
+        shape = (n_states, n_actions)
+        r = np.asarray(self.mmdp.joint_rewards, dtype=np.float64).reshape(shape)
+        occupancy_measures = _as_numpy_matrix(
+            occupancy_measures, shape, "occupancy_measures"
+        )
 
         def diversionary_objective(X_flat):
             X = X_flat.reshape((n_states, n_actions))
             return -np.sum(beta * X**2 + (r - 2 * beta * occupancy_measures) * X)
         
-        initial_guess = np.ones(n_states*n_actions)
-        # initial_guess = init.flatten()
+        initial_guess = (
+            np.ones(n_states * n_actions)
+            if init is None
+            else _as_numpy_matrix(init, shape, "init").reshape(-1)
+        )
         
         constraints = [{'type': 'eq', 'fun': self.flow_constraint}, {'type': 'ineq', 'fun': self.reachability_constraint}]
 
@@ -69,7 +86,7 @@ class PolicyOptimizationScipy(PolicyOptimization):
 
         return self.evaluation(sol)
     
-    def targeted_deception(self, target_occupancy_measures, beta = 1):
+    def targeted_deception(self, target_occupancy_measures, initvals=None, beta = 1):
         """
         Solve MMDP with targeted deception (Optimization Problem 5)
         """
@@ -77,14 +94,22 @@ class PolicyOptimizationScipy(PolicyOptimization):
         n_states = self.mmdp.n_joint_states
         n_actions = self.mmdp.n_joint_actions
         beta = -beta
-        r = self.mmdp.joint_rewards
+        shape = (n_states, n_actions)
+        r = np.asarray(self.mmdp.joint_rewards, dtype=np.float64).reshape(shape)
+        target_occupancy_measures = _as_numpy_matrix(
+            target_occupancy_measures, shape, "target_occupancy_measures"
+        )
 
         def targeted_objective(X_flat):
             X = X_flat.reshape((n_states, n_actions))
 
             return -np.sum(beta * X**2 + (r - 2 * beta * target_occupancy_measures) * X)
         
-        initial_guess = np.ones(n_states*n_actions)
+        initial_guess = (
+            np.ones(n_states * n_actions)
+            if initvals is None
+            else _as_numpy_matrix(initvals, shape, "initvals").reshape(-1)
+        )
         
         constraints = [{'type': 'eq', 'fun': self.flow_constraint}, {'type': 'ineq', 'fun': self.reachability_constraint}]
 

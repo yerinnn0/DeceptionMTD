@@ -69,7 +69,7 @@ class PolicyOptimizationOSQP(PolicyOptimization):
         time0 = time.time()
 
         n = self.n_states * self.n_actions  # Size of the matrix
-        P = P = sp.bsr_matrix((n, n))
+        P = sp.csc_matrix((n, n))
         q = - self.r.flatten()
         
         # Use slack variables for equality constraint
@@ -78,10 +78,10 @@ class PolicyOptimizationOSQP(PolicyOptimization):
         u = np.vstack([self.b_p, self.b_r,self.b_fl])
         
         # Solve QP problem: OSQP
-        solver = osqp.OSQP(algebra='cuda')
-        solver.setup(P, q, A, l, u, eps_abs = 1e-5, eps_rel = 1e-5, 
-                     eps_dual_inf = 1e-5, eps_prim_inf = 1e-5, alpha = 1, 
-                     polish = True, verbose = False)
+        solver = osqp.OSQP()
+        solver.setup(P, q, A, l, u, eps_abs = 1e-7, eps_rel = 1e-7, 
+                     eps_dual_inf = 1e-7, eps_prim_inf = 1e-7, alpha = 1, 
+                     polish = True, verbose = False, max_iter=200000)
         result = solver.solve()
         sol = (result.x).flatten()
         
@@ -135,22 +135,29 @@ class PolicyOptimizationOSQP(PolicyOptimization):
         ])
         
         # Solve QP problem: OSQP
-        solver = osqp.OSQP(algebra='cuda')
+        solver = osqp.OSQP()
         # solver.setup(P, q, A, l, u, eps_abs = 1e-8, eps_rel = 1e-8, 
         #              eps_dual_inf = 1e-8, eps_prim_inf = 1e-8, alpha = 1, 
         #              polish = True, verbose = False, warm_start=True)
         solver.setup(P, q, A, l, u,
-            eps_abs=1e-5, eps_rel=1e-5,
-            eps_dual_inf=1e-5, eps_prim_inf=1e-5,
+            eps_abs=1e-7, eps_rel=1e-7,
+            eps_dual_inf=1e-7, eps_prim_inf=1e-7,
             polish=True, alpha=1.6,
-            rho=0.01, adaptive_rho=False, verbose=False, warm_start=True)
+            adaptive_rho=True, verbose=False, warm_start=True,
+            max_iter=200000)
         result = solver.solve()
         sol = (result.x).flatten()
 
         print(result.info.status)           # 'solved', 'primal infeasible', etc.
 
-        print("Primal residual:", result.info.prim_res)
-        print("Dual residual:", result.info.dual_res)
+        primal_residual = getattr(
+            result.info, "prim_res", getattr(result.info, "pri_res", np.nan)
+        )
+        dual_residual = getattr(
+            result.info, "dual_res", getattr(result.info, "dua_res", np.nan)
+        )
+        print("Primal residual:", primal_residual)
+        print("Dual residual:", dual_residual)
         
         print("Time :", time.time()-time0)
 
@@ -199,7 +206,7 @@ class PolicyOptimizationOSQP(PolicyOptimization):
         # Objective function
         if self.n_states < 1000:
              P = 2*beta*self.A_eq.T.dot(self.A_eq)
-             P = sp.bsr_matrix(P) 
+             P = sp.csc_matrix(P)
         else:
             v = self.A_eq.T.tocsc()
             # v.eliminate_zeros()
@@ -234,20 +241,28 @@ class PolicyOptimizationOSQP(PolicyOptimization):
         print("Solving Equivocal Deception with OSQP...")
         
         # Solve QP problem: OSQP
-        solver = osqp.OSQP(algebra='cuda')
+        solver = osqp.OSQP()
         solver.setup(P, q, A, l, u,
-            eps_abs=1e-5, eps_rel=1e-5,
-            eps_dual_inf=1e-5, eps_prim_inf=1e-5,
+            eps_abs=1e-7, eps_rel=1e-7,
+            eps_dual_inf=1e-7, eps_prim_inf=1e-7,
             polish=True, alpha=1.6,
-            rho=0.01, adaptive_rho=False, verbose=False, warm_start=True)
-        # solver.warm_start(initvals)
+            adaptive_rho=True, verbose=False, warm_start=True,
+            max_iter=200000)
+        if initvals is not None:
+            solver.warm_start(x=np.asarray(initvals).flatten())
         result = solver.solve()
         sol = (result.x).flatten()
 
         print(result.info.status)           # 'solved', 'primal infeasible', etc.
 
-        print("Primal residual:", result.info.prim_res)
-        print("Dual residual:", result.info.dual_res)
+        primal_residual = getattr(
+            result.info, "prim_res", getattr(result.info, "pri_res", np.nan)
+        )
+        dual_residual = getattr(
+            result.info, "dual_res", getattr(result.info, "dua_res", np.nan)
+        )
+        print("Primal residual:", primal_residual)
+        print("Dual residual:", dual_residual)
 
         print("Time for solving equivocal deception :", time.time()-time0)
 

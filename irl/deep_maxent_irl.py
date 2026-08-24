@@ -63,7 +63,7 @@ class DeepMaxEntIRL(IRL):
         """
         n_states = self.mmdp.n_joint_states
         n_actions = self.mmdp.n_joint_actions
-        feature_matrix = self.feature_matrix.to(self.device)
+        feature_matrix = self.feature_matrix.to_dense().to(self.device)
         
         print("Running IRL with Deep MaxEnt")
 
