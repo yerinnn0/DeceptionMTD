@@ -39,7 +39,7 @@ EXPECTED_BETA_MAX = {
     "Targeted": 0.15,
     "Equivocal": 0.05,
 }
-EXPECTED_BETA_COUNT = 10
+EXPECTED_BETA_COUNT = 11
 
 # A beta=0 deceptive solve is mathematically the nominal problem.  OSQP may
 # nevertheless stop early because the quadratic term vanishes at beta=0.
