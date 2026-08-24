@@ -404,7 +404,7 @@ def run_all_serial(beta_vec):
 
                 # Save
                 simulation_type = 'deception'
-                save_file_name = save_file_format[simulation_type][:-4]+"_"+str(np.round(beta,2))+".pkl"
+                save_file_name = save_file_format[simulation_type][:-4]+"_"+str(np.round(beta,3))+".pkl"
                 save_str = os.path.abspath(os.path.join(os.path.abspath(os.path.curdir), save_file_name))
                 with open(save_str, 'wb') as f:
                     pickle.dump(results[-1], f, protocol=pickle.HIGHEST_PROTOCOL)

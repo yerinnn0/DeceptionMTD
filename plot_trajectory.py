@@ -16,7 +16,7 @@ import numpy as np
 
 # Edit only these names if your PKL files use different experiment prefixes.
 PKL_FILES = {
-    "Without Deception": "result_gridworld5_1_lp.pkl",
+    "Without Deception": "result_gridworld_5x5_1_lp.pkl",
     r"Diversionary ($\beta=0.07$)": "final_rev1_gridworld_5x5_1_div_opt_0.07.pkl",
     r"Targeted ($\beta=0.15$)": "final_rev1_gridworld_5x5_1_tar_opt_0.15.pkl",
     r"Equivocal ($\beta=0.05$)": "final_rev1_gridworld_5x5_1_equ_opt_0.05.pkl",

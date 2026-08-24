@@ -285,9 +285,7 @@ def main():
     fig, axes = plt.subplots(1, 3, figsize=(15.0, 3), constrained_layout=True)
 
     for axis, label in zip(axes, ("Diversionary", "Targeted", "Equivocal")):
-        betas, actual_revenue, revenue_percent = revenue_curve(
-                loggers[label], r_star, label
-            )
+
         betas, actual_revenue, revenue_percent = revenue_curve(
             loggers[label], r_star, label
         )
