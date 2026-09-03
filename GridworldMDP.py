@@ -1,10 +1,5 @@
 """Single-agent 5x5 stochastic gridworld for DeceptionMTD.
 
-This file is intended to replace the repository's ``MDP.py``.  It preserves
-the public attributes and methods used by ``execute_serial.py``, the policy
-optimizers, and the IRL classes, while fixing the environment to one agent,
-25 states, and four actions.
-
 Coordinates are ``(row, column)`` with ``(0, 0)`` at the upper-left.
 Actions are UP=0, RIGHT=1, DOWN=2, LEFT=3.
 """
@@ -81,15 +76,15 @@ def path_state_sets(
 def create_rewards(
     path_reward: float = 0.2,
     terminal_reward: float = 10.0,
-    movement_cost: float = 0.1,
+    movement_cost: float = -0.1,
     grid_shape: Tuple[int, int] = GRID_SHAPE,
 ) -> np.ndarray:
     """Create true rewards with shape ``(n_states, 4)``.
 
-    Rewards use the repository's current-state convention ``r(s, a)``.
-    Every action receives ``movement_cost``; upper/right goal-path states
-    receive ``path_reward``; and the terminal receives the additional
-    ``terminal_reward`` once before it resets to the start.
+    Rewards use ``r(s, a)``.
+    Every action receives ``movement_cost``.
+    Upper/right goal-path states receive ``path_reward``.
+    The terminal receives the additional ``terminal_reward`` once before it resets to the start.
     """
     n_states = int(np.prod(grid_shape))
     rewards = np.full((n_states, 4), float(movement_cost), dtype=np.float64)
@@ -107,11 +102,7 @@ def create_decoy_rewards(
     movement_cost: float = 0.0,
     grid_shape: Tuple[int, int] = GRID_SHAPE,
 ) -> np.ndarray:
-    """Compatibility helper returning a decoy-route reward matrix.
-
-    The single-agent experiment normally does not call this function.  It is
-    retained because the original execution script imports it.
-    """
+    
     n_states = int(np.prod(grid_shape))
     rewards = np.full((n_states, 4), float(movement_cost), dtype=np.float64)
     _, _, decoy_states = path_state_sets(grid_shape)
@@ -164,7 +155,7 @@ class MultiAgentGridworld:
 
         expected_states = int(np.prod(grid_shape))
         if N_agents != 1:
-            raise ValueError("this replacement environment requires N_agents=1")
+            raise ValueError("this environment requires N_agents=1")
         if n_states != expected_states:
             raise ValueError(f"n_states must be {expected_states} for grid {grid_shape}")
         if n_actions != 4:
@@ -219,8 +210,8 @@ class MultiAgentGridworld:
         self.goal_states = goal
         self.preferred_states = preferred
         self.decoy_states = decoy
-        # Apply the original reachability/task constraint to the complete true
-        # path P_T.  goal_states already includes the shared terminal, while
+        # Apply the original task constraint to the preferred path P_T.
+        # Goal_states already includes the shared terminal, while
         # preferred_states continues to exclude it for equivocal deception.
         self.task_states = goal.copy()
         self.true_path_states = goal.copy()
