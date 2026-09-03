@@ -183,7 +183,6 @@ def run_all_serial(beta_vec):
     time0 = time.time()
 
     if environment_name == "mtd":
-        # Original multi-agent cyber MDP setup.
         initial_distribution = np.zeros((n_local_states, N_agents))
         initial_distribution[local_initial_state] = 1
         initial_distribution = initial_distribution.T.reshape(-1, 1)
@@ -211,7 +210,6 @@ def run_all_serial(beta_vec):
         mmdp.set_goal_states(goal_states, decoy_states)
 
     elif environment_name == "gridworld":
-        # Single-agent stochastic configurable gridworld setup.
         initial_distribution = np.zeros(n_local_states, dtype=float)
         initial_distribution[local_initial_state] = 1.0
         rewards = create_gridworld_rewards(

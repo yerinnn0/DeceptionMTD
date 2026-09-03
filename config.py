@@ -44,7 +44,7 @@ elif environment_name == "gridworld":
     local_goal_state = n_local_states - 1
     v_reach = 0.3/(1-gamma)
 
-    # P_T follows the upper/right boundary and includes terminal T.
+    # Goal states (preferred path) follows the upper/right boundary and includes terminal T.
     grid_goal_states = (
         list(range(1, grid_cols))
         + [row * grid_cols + (grid_cols - 1) for row in range(1, grid_rows)]
@@ -55,7 +55,6 @@ elif environment_name == "gridworld":
     movement_cost = -0.1
     x_tar = None  # None => flow-feasible target induced by the decoy-route policy
 
-    # Kept defined so old logging/plot code can read the same keys.
     real_agents = [0]
     target_decoy_agents = []
     target_occupancy_measure_values = None

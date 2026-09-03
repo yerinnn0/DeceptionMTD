@@ -34,8 +34,6 @@ class PolicyOptimization:
         self.A_fl -= self.gamma*T
         self.A_fl = sp.csr_matrix(self.A_fl)
         
-        # Gridworld completion uses only the terminal; legacy MTD environments
-        # fall back to their existing goal-state reachability definition.
         self.task_states = np.asarray(
             getattr(self.mmdp, "task_states", self.mmdp.goal_states), dtype=int
         ).reshape(-1)

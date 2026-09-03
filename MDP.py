@@ -106,20 +106,11 @@ def select_value_from_distribution(N_agents, n_states, distribution, device):
     # Convert tensor to Python list
     return samples.cpu().tolist()
 
-    # states = []
-    # for j in range(N_agents):
-    #     distribution_for_agent = distribution[n_states*j:n_states*(j+1)]
-    #     r = np.random.uniform(0,1)
-    #     for i in range(len(distribution_for_agent)):
-    #         if r < np.sum(distribution_for_agent[:i+1]):
-    #             states.append(i)
-    #             break
-
-    # return states
 
 class MultiAgentGridworld:
     # perturbation = 0 gives input perturbation, and perturbation = 1 gives output perturbation
-    def __init__(self, N_agents, initial_distribution, n_states, n_actions, rewards, gamma, v_reach = 0.9, variance = 0, p=0.1, perturbation=0, build_transition_matrix = True):
+    def __init__(self, N_agents, initial_distribution, n_states, n_actions, rewards, gamma,
+                  v_reach = 0.9, variance = 0, p=0.1, perturbation=0, build_transition_matrix = True):
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
