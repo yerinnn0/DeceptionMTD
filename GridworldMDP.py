@@ -95,23 +95,6 @@ def create_rewards(
     )
     return rewards
 
-
-def create_decoy_rewards(
-    decoy_reward: float = 0.0,
-    terminal_reward: float = 0.0,
-    movement_cost: float = 0.0,
-    grid_shape: Tuple[int, int] = GRID_SHAPE,
-) -> np.ndarray:
-    
-    n_states = int(np.prod(grid_shape))
-    rewards = np.full((n_states, 4), float(movement_cost), dtype=np.float64)
-    _, _, decoy_states = path_state_sets(grid_shape)
-    rewards[decoy_states, :] += float(decoy_reward)
-    terminal = state_index((grid_shape[0] - 1, grid_shape[1] - 1), grid_shape)
-    rewards[terminal, :] += float(terminal_reward)
-    return rewards
-
-
 def _as_flat_state_set(values: Iterable[int], n_states: int, name: str) -> np.ndarray:
     states = np.asarray(values, dtype=int).reshape(-1)
     if states.size and (np.any(states < 0) or np.any(states >= n_states)):
@@ -287,8 +270,6 @@ class MultiAgentGridworld:
                 f"x_tar must contain {self.n_joint_states * self.n_joint_actions} values"
             )
         target = target.reshape(self.n_joint_states, self.n_joint_actions)
-        if np.any(target < 0) or not np.all(np.isfinite(target)):
-            raise ValueError("x_tar must be finite and non-negative")
         self.x_tar = target.copy()
 
     def build_decoy_policy(self) -> np.ndarray:
@@ -328,12 +309,12 @@ class MultiAgentGridworld:
         if np.any(policy < 0) or not np.allclose(policy.sum(axis=1), 1.0):
             raise ValueError("each policy row must be non-negative and sum to one")
 
-        p_pi = np.einsum("sa,sak->sk", policy, self.transition_matrices)
+        T_pi = np.einsum("sa,sak->sk", policy, self.transition_matrices)
         discounted_state_occupancy = np.linalg.solve(
-            np.eye(self.n_states) - self.gamma * p_pi.T,
+            np.eye(self.n_states) - self.gamma * T_pi.T,
             self.initial_joint_distribution,
         )
-        return discounted_state_occupancy[:, None] * policy
+        return discounted_state_occupancy[:, None] * policy  # State occupancy to state-action occupancy
 
     def build_agent_transition_matrix(self, p: float = 0.1) -> np.ndarray:
         """Build ``T[s, a, s']`` with 0.9 chosen + 0.1 uniform actions.
@@ -377,18 +358,6 @@ class MultiAgentGridworld:
         self.build_joint_transition_matrix()
         self._sync_tensors()
 
-    def build_joint_transition_matrix_original(self) -> None:
-        self.build_joint_transition_matrix_cpu()
-
-    def build_joint_rewards(self) -> None:
-        reward_matrix = np.asarray(self.rewards, dtype=np.float64)
-        if reward_matrix.shape == (self.n_states, self.n_actions, 1):
-            reward_matrix = reward_matrix[:, :, 0]
-        if reward_matrix.shape != (self.n_states, self.n_actions):
-            raise ValueError("invalid rewards shape")
-        self.joint_rewards = reward_matrix.copy()
-        self._sync_tensors()
-
     def reset_initial_state(self) -> None:
         self.s0 = int(np.random.choice(self.n_states, p=self.initial_distribution))
 
@@ -403,23 +372,6 @@ class MultiAgentGridworld:
 
     def agent_action_space(self) -> np.ndarray:
         return np.arange(self.n_actions)
-
-    def get_agent_slice(self, agent_id: int) -> slice:
-        if agent_id != 0:
-            raise IndexError("single-agent environment has only agent 0")
-        return slice(0, self.n_states)
-
-    def get_joint_state(self, states: Sequence[int]) -> int:
-        values = np.asarray(states, dtype=int).reshape(-1)
-        if values.size != 1:
-            raise ValueError("single-agent joint state must contain one local state")
-        return int(values[0])
-
-    def get_joint_action(self, actions: Sequence[int]) -> int:
-        values = np.asarray(actions, dtype=int).reshape(-1)
-        if values.size != 1:
-            raise ValueError("single-agent joint action must contain one local action")
-        return int(values[0])
 
     def get_state(self, joint_state: int) -> list[int]:
         return [int(joint_state)]
@@ -442,72 +394,6 @@ class MultiAgentGridworld:
             raise ValueError("get_next_state expects one state and one action")
         probabilities = self.joint_transition_matrix_t[state[0], action[0]]
         return torch.multinomial(probabilities, num_samples=1).squeeze(0)
-
-    def feature_vector(self, i: int, feature_map: str = "identity") -> np.ndarray:
-        """Return a state-action feature vector without multi-agent assumptions."""
-        index = int(i)
-        total = self.n_states * self.n_actions
-        if not 0 <= index < total:
-            raise IndexError(f"feature index must be in [0, {total})")
-        state, action = divmod(index, self.n_actions)
-        row, col = self.state_to_coord(state)
-
-        if feature_map in {"identity", "state_action", "set_local"}:
-            feature = np.zeros(total, dtype=np.float64)
-            feature[index] = 1.0
-            return feature
-        if feature_map in {"state", "local_state"}:
-            feature = np.zeros(self.n_states, dtype=np.float64)
-            feature[state] = 1.0
-            return feature
-        if feature_map == "coord":
-            action_one_hot = np.eye(self.n_actions, dtype=np.float64)[action]
-            row_scale = max(self.grid_shape[0] - 1, 1)
-            col_scale = max(self.grid_shape[1] - 1, 1)
-            return np.concatenate(
-                [
-                    np.asarray([row / row_scale, col / col_scale], dtype=np.float64),
-                    action_one_hot,
-                    np.asarray(
-                        [
-                            state in self.preferred_states,
-                            state in self.decoy_states,
-                            state == self.terminal_state,
-                            1.0,
-                        ],
-                        dtype=np.float64,
-                    ),
-                ]
-            )
-        if feature_map == "path":
-            action_one_hot = np.eye(self.n_actions, dtype=np.float64)[action]
-            route = np.asarray(
-                [
-                    state in self.preferred_states,
-                    state in self.decoy_states,
-                    state == self.terminal_state,
-                    state not in set(self.goal_states) | set(self.decoy_states),
-                ],
-                dtype=np.float64,
-            )
-            return np.concatenate([route, action_one_hot])
-        if feature_map == "proxi":
-            proximity = np.zeros(self.n_states, dtype=np.float64)
-            for other_state in range(self.n_states):
-                other_row, other_col = self.state_to_coord(other_state)
-                proximity[other_state] = 1.0 / (abs(row - other_row) + abs(col - other_col) + 1.0)
-            return np.concatenate([proximity, np.eye(self.n_actions)[action]])
-        if feature_map in {"agent_controlled", "correlated"}:
-            raise ValueError(
-                f"feature_map={feature_map!r} encodes the old multi-agent cyber states; "
-                "use 'identity', 'state', 'coord', 'path', or 'proxi'"
-            )
-        raise ValueError(f"unknown feature_map {feature_map!r}")
-
-    def feature_matrix(self, feature_map: str = "identity") -> np.ndarray:
-        return np.asarray(
-            [self.feature_vector(i, feature_map) for i in range(self.n_states * self.n_actions)]
-        )
 
     def run_MApolicy_cpu(
         self, policy: np.ndarray, n_steps: int

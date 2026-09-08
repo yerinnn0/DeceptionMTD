@@ -114,8 +114,6 @@ def bound_coefficients(nominal_result, targeted_result):
     x_tar = occupancy(targeted_result, "target_occupancy_measure")
     if x_tar.shape != x_star.shape:
         raise ValueError(f"x_tar shape {x_tar.shape} differs from x* shape {x_star.shape}.")
-    if np.min(x_tar) < -1e-9:
-        raise ValueError("The gridworld targeted bound expects non-negative x_tar.")
 
     settings = result_settings(nominal_result)
     gamma = float(settings["gamma"])
@@ -136,11 +134,7 @@ def bound_coefficients(nominal_result, targeted_result):
         x_star_square + one_minus_gamma_inv**2
     ) / r_star
 
-    # -----------------------------------------------------------------------
-    # EDIT 2 / DOUBLE-CHECK: Theorem 2 uses max(x_tar), not max(x_tar)-min(x_tar).
-    # This is the manuscript formula for the non-negative gridworld occupancy
-    # target.  Do not copy the legacy MTD notebook's signed-weight adjustment.
-    # -----------------------------------------------------------------------
+    # Theorem 2: targeted-deception revenue-loss bound.
     targeted = (
         x_star_square
         - 2.0 * x_star_x_tar
@@ -148,16 +142,12 @@ def bound_coefficients(nominal_result, targeted_result):
         + 2.0 * one_minus_gamma_inv * max_x_tar
     ) / r_star
 
+    # Theorem 3: equivocal-deception revenue-loss bound.
     preferred, decoy = preferred_and_decoy_states(settings, x_star.shape[0])
     x_star_by_state = np.sum(x_star, axis=1)
     preferred_mass = float(np.sum(x_star_by_state[preferred]))
     decoy_mass = float(np.sum(x_star_by_state[decoy]))
 
-    # -----------------------------------------------------------------------
-    # EDIT 3 / DOUBLE-CHECK: match the implemented equivocal objective.
-    # It compares P_T\{T} against P_D; the task constraint still uses P_T
-    # including T.  The terminal is shared by both routes and is excluded here.
-    # -----------------------------------------------------------------------
     equivocal = (preferred_mass - decoy_mass) ** 2 / r_star
 
     diagnostics = {
@@ -190,11 +180,7 @@ def revenue_curve(logger, r_star, label):
     )
     percentages = 100.0 * revenues / r_star
 
-    # -----------------------------------------------------------------------
-    # EDIT 4 / DOUBLE-CHECK: normalize every method by the nominal LP R*.
-    # Never normalize by the first deceptive result; an inaccurate beta=0 QP
-    # can otherwise make later points and the 100% reference line misleading.
-    # -----------------------------------------------------------------------
+    # Normalize every method by the nominal LP R*.
     zero_indices = np.flatnonzero(np.isclose(betas, 0.0, atol=1e-12))
     if USE_EXACT_NOMINAL_AT_BETA_ZERO:
         for index in zero_indices:
@@ -205,7 +191,7 @@ def revenue_curve(logger, r_star, label):
                     "Plotting the exact nominal value 100%; check solver status/residuals."
                 )
             percentages[index] = 100.0
-    # return betas, percentages
+            
     return betas, revenues, percentages
 
 
