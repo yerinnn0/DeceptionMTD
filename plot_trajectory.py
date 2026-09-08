@@ -13,8 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-
-# Edit only these names if your PKL files use different experiment prefixes.
 PKL_FILES = {
     "Without Deception": "result_gridworld_5x5_1_lp.pkl",
     r"Diversionary ($\beta=0.07$)": "final_rev1_gridworld_5x5_1_div_opt_0.07.pkl",
@@ -80,7 +78,6 @@ def main():
         result = load_result(path)
         occupancies.append(state_occupancy(result, deceptive=index > 0))
 
-    # One shared color scale makes the four panels directly comparable.
     vmax = max(float(values.max()) for values in occupancies)
     fig, axes = plt.subplots(1, 4, figsize=(13, 3.2), constrained_layout=True)
 
@@ -90,12 +87,7 @@ def main():
         axis.set_title(title)
         axis.set_xticks(range(GRID_SHAPE[1]))
         axis.set_yticks(range(GRID_SHAPE[0]))
-        # axis.set_xlabel("column")
-        # if axis is axes[0]:
-        #     axis.set_ylabel("row")
-        # else:
-        #     axis.set_yticklabels([])
-
+        
         axis.text(0, 0, "S", ha="center", va="center", color="black", weight="bold")
         axis.text(
             GRID_SHAPE[1] - 1,

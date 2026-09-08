@@ -20,9 +20,6 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 
 
-# ---------------------------------------------------------------------------
-# EDIT 1: change only these file names when EXPERIMENT_NAME/file tags differ.
-# ---------------------------------------------------------------------------
 PKL_FILES = {
     "Nominal": "result_gridworld_5x5_1_lp.pkl",
     "Diversionary": "final_rev1_gridworld_5x5_1_div_opt.pkl",
