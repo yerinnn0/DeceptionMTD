@@ -9,21 +9,22 @@ gridworld as an additional example outside the MTD setting.
 
 ## Repository structure
 
-- `MDP.py`: original multi-agent MTD environment, including transition and
+- `MDP.py`: Original multi-agent MTD environment, including transition and
   reward construction.
-- `GridworldMDP.py`: additional single-agent stochastic gridworld environment.
+- `GridworldMDP.py`: Additional single-agent stochastic gridworld environment.
 - `config.py`: MDP, deception, solver, IRL, and output settings for both
   environments.
-- `execute_serial.py`: experiment workflow for nominal optimization,
+- `execute_serial.py`: Experiment workflow for nominal optimization,
   deceptive-policy optimization, optional IRL, and result storage.
-- `policy_optimization/`: optimization implementations for SciPy, OSQP,
+- `policy_optimization/`: Optimization implementations for SciPy, OSQP,
   Pyomo, Gurobi, and other supported solvers.
-- `irl/`: maximum-entropy, deep maximum-entropy, and apprenticeship-learning
+- `irl/`: Maximum-entropy, deep maximum-entropy, and apprenticeship-learning
   IRL implementations.
-- `plot.ipynb`: analysis and plotting notebook for the main MTD experiments.
-- `plot_trajectory.py`: state-occupancy heatmaps for the additional gridworld
+- `plot.ipynb`: Analysis and plotting notebook for the main MTD experiments.
+- `plot_trajectory.py`: State-occupancy heatmaps for the additional gridworld
   example.
-- `plot_revenue_bound.py`: gridworld revenue and theoretical-bound plots.
+- `plot_revenue_bound.py`: Gridworld revenue and theoretical-bound plots for 
+  the additional gridworld example.
 
 ## Installation
 
@@ -38,7 +39,7 @@ The main MTD experiments may additionally require the solver selected in
 `config.py`, such as Pyomo or Gurobi. A valid Gurobi installation and license
 are required when `gurobi` is selected.
 
-## Main experiment: multi-agent MTD
+## Main experiment: Multi-agent MTD
 
 The original MTD environment models multiple agents with local cyber states
 and actions. Agents can represent the real system components whose operation
@@ -121,7 +122,7 @@ name, deception type, and IRL model. Existing consolidated files are loaded
 instead of recomputed. To rerun an experiment from scratch, use a new
 `EXPERIMENT_NAME` or move the existing result files to another directory.
 
-## Additional example: stochastic gridworld
+## Additional example: Stochastic gridworld
 
 The gridworld example applies the same deceptive-policy optimization framework
 to a structurally different, non-MTD navigation problem. It provides an
